@@ -138,12 +138,12 @@ def measure_latency(proxy: str, targets=None, timeout: float = 5.0) -> dict:
     return out
 
 
-def speed_test(proxy: str, nbytes: int, timeout: float = 90,
+def speed_test(proxy: str, nbytes: int, timeout: float = 30,
                max_seconds: float = 60) -> dict:
     """下载测速。主目标 Cloudflare，备选 cachefly。
 
-    max_seconds 是硬性总时限：到时即按已收字节计算部分速度并标记
-    partial=True，避免慢速节点把审计拖住几分钟。
+    两层超时：socket 级 timeout（对端停摆时单次 read 最多挂这么久）+
+    max_seconds 总时限（到时按已收字节算部分速度并标记 partial）。
     """
     out = {"ok": False, "mbps": None, "bytes": 0, "seconds": None,
            "partial": False, "target": None, "reason": None}

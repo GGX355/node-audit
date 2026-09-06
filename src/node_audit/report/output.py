@@ -7,6 +7,18 @@ from datetime import datetime
 from pathlib import Path
 
 
+def _svc_md_text(r) -> str:
+    """服务探针结果的人读文案，Markdown 与 HTML 共用。"""
+    from ..core.services import SERVICE_SHORT, STATUS_CN
+
+    parts = []
+    for name, res in (r.services or {}).items():
+        cn = STATUS_CN.get(res.get("status"), res.get("status", "?"))
+        region = f"({res['region']})" if res.get("region") else ""
+        parts.append(f"{SERVICE_SHORT.get(name, name)} {cn}{region}")
+    return " / ".join(parts) if parts else "-"
+
+
 def write_json(reports, path: Path, meta: dict) -> None:
     payload = {
         "meta": meta,
@@ -39,7 +51,6 @@ def write_markdown(reports, path: Path, meta: dict) -> None:
         "| 节点 | 出口IP | 归属 | ISP | ASN | 类型 | PTR | 原生 | RTT(ms) | 速度(Mbps) | 一致性 | 风险 | 服务 | 判定 |",
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
-    from ..core.services import STATUS_CN, SERVICE_SHORT
     for r in reports:
         p0 = (r.deep.ping0 if r.deep else None) or {}
         sc = (r.deep.scamalytics if r.deep else None) or {}
@@ -51,12 +62,7 @@ def write_markdown(reports, path: Path, meta: dict) -> None:
             risk = "-"
         rtt = ",".join(f"{k}:{v}" for k, v in r.rtt.items()) or "-"
         ip_type = "机房" if r.hosting is True else ("住宅候选" if r.hosting is False else "-")
-        svc_parts = []
-        for name, res in (r.services or {}).items():
-            cn = STATUS_CN.get(res.get("status"), res.get("status", "?"))
-            region = f"({res['region']})" if res.get("region") else ""
-            svc_parts.append(f"{SERVICE_SHORT.get(name, name)} {cn}{region}")
-        services = " / ".join(svc_parts) if svc_parts else "-"
+        services = _svc_md_text(r).replace("|", "/")
         verdict = r.verdict + (("（" + "；".join(r.notes) + "）") if r.notes else "")
         cells = [
             r.name.replace("|", "/"),

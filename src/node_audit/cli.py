@@ -161,7 +161,11 @@ def cmd_audit(args) -> int:
         est_min = max(1, len(targets) * 25 // 60)
         print(f"⚠  即将进入 global 模式逐节点切换，期间你的全部流量会经由被测节点（预计 ~{est_min} 分钟）。")
         if not args.yes:
-            ans = input("继续? [y/N] ").strip().lower()
+            try:
+                ans = input("继续? [y/N] ").strip().lower()
+            except EOFError:
+                print("\n非交互环境无法确认：已取消（自动化场景请加 --yes）。")
+                return 1
             if ans not in ("y", "yes"):
                 print("已取消。")
                 return 1
@@ -178,10 +182,22 @@ def _emit(reports, disc, args) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
     jpath = outdir / f"audit-{now}.json"
     mpath = outdir / f"audit-{now}.md"
+    hpath = outdir / f"audit-{now}.html"
     meta = {"controller": disc.describe(), "mode": args.mode,
+            "run_id": now,
             "generated_at": datetime.now().isoformat(timespec="seconds")}
     write_json(reports, jpath, meta)
     write_markdown(reports, mpath, meta)
+
+    hpath_str = "-"
+    if not args.no_history:
+        from .core.history import load_trend, save_run
+        db_path = Path(args.db) if args.db else outdir / "history.db"
+        save_run(reports, meta, db_path)
+        trend = load_trend(db_path)
+        from .report.html import write_html
+        write_html(reports, meta, hpath, trend)
+        hpath_str = str(hpath)
 
     geo_mark = {"match": "✓", "mismatch": "✗", "unknown": "?"}
 
@@ -214,6 +230,9 @@ def _emit(reports, disc, args) -> None:
     print("判定分布:", dict(Counter(r.verdict for r in reports)))
     print(f"报告: {jpath}")
     print(f"      {mpath}")
+    if hpath_str != "-":
+        print(f"      {hpath_str}")
+        print(f"历史: {Path(args.db) if args.db else outdir / 'history.db'}")
 
 
 def main(argv=None) -> int:
@@ -227,7 +246,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="node-audit", description="Clash/mihomo 节点质量审计：IP 身份·纯净度·延迟·测速"
     )
-    parser.add_argument("--version", action="version", version="node-audit 0.3.0")
+    parser.add_argument("--version", action="version", version="node-audit 0.4.0")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_disc = sub.add_parser("discover", help="探测控制器并列出节点（只读，不做任何切换）")
@@ -259,6 +278,10 @@ def main(argv=None) -> int:
                        help="isolated 模式的独立端口起始值（默认 41000）")
     p_aud.add_argument("--core", default=None, help="isolated 模式的 mihomo 内核路径（默认自动查找）")
     p_aud.add_argument("--out", default="node-audit-report", help="报告输出目录（默认 ./node-audit-report）")
+    p_aud.add_argument("--db", default=None,
+                       help="历史趋势 SQLite 路径（默认 <out>/history.db）")
+    p_aud.add_argument("--no-history", action="store_true",
+                       help="不写入历史库、不生成 HTML 趋势报告")
     p_aud.add_argument("--dry-run", action="store_true", help="只列出将测的节点，不切换不检测")
     p_aud.add_argument("--yes", "-y", action="store_true", help="跳过切换前的确认提示")
     p_aud.set_defaults(func=cmd_audit)
