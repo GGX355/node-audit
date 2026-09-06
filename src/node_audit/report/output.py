@@ -36,9 +36,10 @@ def write_markdown(reports, path: Path, meta: dict) -> None:
         "",
         "## 明细",
         "",
-        "| 节点 | 出口IP | 归属 | ISP | ASN | 类型 | PTR | 原生 | RTT(ms) | 速度(Mbps) | 一致性 | 风险 | 判定 |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| 节点 | 出口IP | 归属 | ISP | ASN | 类型 | PTR | 原生 | RTT(ms) | 速度(Mbps) | 一致性 | 风险 | 服务 | 判定 |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
+    from ..core.services import STATUS_CN, SERVICE_SHORT
     for r in reports:
         p0 = (r.deep.ping0 if r.deep else None) or {}
         sc = (r.deep.scamalytics if r.deep else None) or {}
@@ -50,6 +51,12 @@ def write_markdown(reports, path: Path, meta: dict) -> None:
             risk = "-"
         rtt = ",".join(f"{k}:{v}" for k, v in r.rtt.items()) or "-"
         ip_type = "机房" if r.hosting is True else ("住宅候选" if r.hosting is False else "-")
+        svc_parts = []
+        for name, res in (r.services or {}).items():
+            cn = STATUS_CN.get(res.get("status"), res.get("status", "?"))
+            region = f"({res['region']})" if res.get("region") else ""
+            svc_parts.append(f"{SERVICE_SHORT.get(name, name)} {cn}{region}")
+        services = " / ".join(svc_parts) if svc_parts else "-"
         verdict = r.verdict + (("（" + "；".join(r.notes) + "）") if r.notes else "")
         cells = [
             r.name.replace("|", "/"),
@@ -64,6 +71,7 @@ def write_markdown(reports, path: Path, meta: dict) -> None:
             r.speed_mbps if r.speed_mbps is not None else "-",
             r.geo_match,
             risk,
+            services.replace("|", "/"),
             verdict,
         ]
         lines.append("| " + " | ".join(str(c) for c in cells) + " |")
