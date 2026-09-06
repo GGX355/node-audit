@@ -22,6 +22,7 @@ from .clash.transport import PipeTransport, TcpTransport
 from .core.filters import heavy_traffic, is_real_node, rate_multiplier, region_from_name
 from .core.isolated import find_core_binary, run_isolated
 from .core.runner import run_attach
+from .core.services import PROBES, SERVICE_SHORT, STATUS_MARK, STATUS_CN
 from .report.output import write_json, write_markdown
 from .report.table import render
 
@@ -34,6 +35,21 @@ def _parse_size(s: str) -> int:
     return int(float(m.group(1)) * factor)
 
 
+def _parse_services(s: str):
+    """"all" / "none" / 逗号分隔的服务名。"""
+    s = (s or "").strip().lower()
+    if s in ("none", "off"):
+        return []
+    if s in ("all", ""):
+        return sorted(PROBES)
+    names = [x.strip() for x in s.split(",") if x.strip()]
+    bad = [x for x in names if x not in PROBES]
+    if bad:
+        raise argparse.ArgumentTypeError(
+            f"未知服务: {','.join(bad)}（可用: {','.join(sorted(PROBES))}、all、none）")
+    return names
+
+
 class Opts:
     """runner 所需的运行参数（与 argparse 解耦）。"""
 
@@ -44,6 +60,7 @@ class Opts:
         self.speed_max_seconds = args.speed_max_seconds
         self.skip_speed = args.skip_speed
         self.deep = args.deep
+        self.services = args.services
         self.ipqs_key = args.ipqs_key
         self.abuseipdb_key = args.abuseipdb_key
         self.port_base = args.port_base
@@ -109,6 +126,9 @@ def cmd_audit(args) -> int:
         targets.append((n, t))
     if args.limit:
         targets = targets[: args.limit]
+    if not targets:
+        print("没有匹配的节点（检查 --include/--exclude 是否过滤过严）。")
+        return 1
 
     print(f"控制器: {disc.describe()}")
     print(f"待测节点: {len(targets)} / {len(all_nodes)}（当前 mode={cfg.get('mode')}）")
@@ -164,6 +184,16 @@ def _emit(reports, disc, args) -> None:
     write_markdown(reports, mpath, meta)
 
     geo_mark = {"match": "✓", "mismatch": "✗", "unknown": "?"}
+
+    def _services_short(rep) -> str:
+        if not rep.services:
+            return "-"
+        parts = []
+        for name, res in rep.services.items():
+            mark = STATUS_MARK.get(res.get("status"), "?")
+            parts.append(f"{SERVICE_SHORT.get(name, name[:3].upper())}{mark}")
+        return " ".join(parts)
+
     rows = []
     for r in reports:
         rows.append([
@@ -175,10 +205,11 @@ def _emit(reports, disc, args) -> None:
             r.rtt_min if r.rtt_min is not None else "-",
             r.speed_mbps if r.speed_mbps is not None else "-",
             geo_mark.get(r.geo_match, "?"),
+            _services_short(r),
             r.verdict,
         ])
     print()
-    print(render(rows, ["节点", "预期", "出口IP", "归属", "ISP", "类型", "RTT", "Mbps", "一致", "判定"]))
+    print(render(rows, ["节点", "预期", "出口IP", "归属", "ISP", "类型", "RTT", "Mbps", "一致", "服务", "判定"]))
     print()
     print("判定分布:", dict(Counter(r.verdict for r in reports)))
     print(f"报告: {jpath}")
@@ -196,7 +227,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="node-audit", description="Clash/mihomo 节点质量审计：IP 身份·纯净度·延迟·测速"
     )
-    parser.add_argument("--version", action="version", version="node-audit 0.2.0")
+    parser.add_argument("--version", action="version", version="node-audit 0.3.0")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_disc = sub.add_parser("discover", help="探测控制器并列出节点（只读，不做任何切换）")
@@ -217,6 +248,9 @@ def main(argv=None) -> int:
     p_aud.add_argument("--skip-speed", action="store_true", help="跳过测速")
     p_aud.add_argument("--deep", choices=["auto", "off", "all"], default="auto",
                        help="深检：auto=仅住宅候选节点 / off / all（默认 auto）")
+    p_aud.add_argument("--services", type=_parse_services, default=_parse_services("all"),
+                       metavar="LIST",
+                       help="服务风控探针：all / none / 逗号分隔（openai,netflix,tiktok；默认 all）")
     p_aud.add_argument("--ipqs-key", default=os.environ.get("NODE_AUDIT_IPQS_KEY"),
                        help="IPQualityScore API key（或环境变量 NODE_AUDIT_IPQS_KEY）")
     p_aud.add_argument("--abuseipdb-key", default=os.environ.get("NODE_AUDIT_ABUSEIPDB_KEY"),

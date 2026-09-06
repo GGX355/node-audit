@@ -60,6 +60,7 @@ node-audit audit --mode isolated --yes --deep all \
 | `--speed-max-seconds 60` | 单节点测速硬时限，到时按已收字节计算部分速度 |
 | `--skip-speed` | 不测速 |
 | `--deep auto\|off\|all` | 深检范围：auto=仅住宅候选节点 |
+| `--services all\|none\|列表` | 服务风控探针（默认 all）：`openai,netflix,tiktok` 任选 |
 | `--ipqs-key` / `--abuseipdb-key` | 官方风控 API key（免费额度：IPQS 5000/月，AbuseIPDB 1000/天） |
 | `--port-base 41000` | isolated 模式独立端口起始值 |
 | `--core PATH` | isolated 模式的 mihomo 内核路径（默认自动查找 Clash Verge 安装目录） |
@@ -79,8 +80,25 @@ node-audit audit --mode isolated --yes --deep all \
 | 深检 | 家庭宽带/IDC机房、原生/广播、风控值 | ping0.cc（网页，best-effort） |
 | 深检 | 信任分 / proxy-vpn-tor 标记 | IPQS 官方 API（需免费 key） |
 | 深检 | 滥用举报置信度 | AbuseIPDB 官方 API（需免费 key） |
+| 探针 | OpenAI 可用性 / 封区（匿名 401 vs 403） | api.openai.com |
+| 探针 | Netflix 解锁（全解锁 / 仅自制 / 无） | netflix.com |
+| 探针 | TikTok 风控（正常 / 人机验证 / 封禁） | tiktok.com |
 
 判定口径：`hosting=true` 直接判**机房**（生死线）；`hosting=false` 为**住宅候选**，再由 ping0 细分为「疑似真家宽·原生」等；官方 API 与网页源互相交叉验证——单一数据源漏判时（例如 ip-api 未标记某 CDN 机房段），其他来源的标记会写进 notes。
+
+## 服务风控探针与隐私保证（v0.3）
+
+探针把"这个节点能不能干净地用某服务"从评分推算变成实测。**隐私与账号安全的硬性设计**：
+
+1. **无 Cookie 保证**：探针客户端永远不携带任何 Cookie / Token / 登录态，与你的浏览器身份之间不存在可关联的凭据；
+2. **打点 URL 全部公开**，可逐条核验：
+   - OpenAI：`api.openai.com/cdn-cgi/trace`（出口国）+ `api.openai.com/v1/models`（无凭据，401=地区可用 / 403=封区）
+   - Netflix：`netflix.com/` + `netflix.com/title/81280792`（非自制内容解锁测试）
+   - TikTok：`tiktok.com/`（检查是否返回风控验证页）
+3. **限频**：每服务每节点最多 2 个请求，超时 8 秒，失败记为 unknown；
+4. **匿名 GET 不会导致 IP 或账号被标记**——IP 风控来自批量注册、撞库、刷量等行为，单个匿名请求是统计噪声；
+
+⚠ 唯一真正要避免的：**attach 模式**审计期间挂着登录态账号的浏览器（流量在多国间快速漂移才是账号风控信号）。用 **isolated 模式**则完全无此顾虑——探针走临时实例的独立端口，你的浏览器流量全程不动。
 
 ## 安全设计
 
@@ -107,8 +125,8 @@ python tests/run_all.py   # 零依赖
 
 - [x] v0.1 attach 模式快筛 + 深检 + 表格/JSON/Markdown 报告
 - [x] v0.2 isolated 零干扰模式；IPQS / AbuseIPDB 官方 API；测速硬时限；atexit 状态还原兜底；单元测试
-- [ ] v0.3 服务风控探针（TikTok 验证码 / OpenAI 可用性 / Netflix 解锁）
-- [ ] v0.4 HTML 报告 + SQLite 历史趋势
+- [x] v0.3 服务风控探针（OpenAI / Netflix / TikTok），无 Cookie 匿名实测
+- [ ] v0.4 HTML 报告 + SQLite 历史趋势（看家宽 IP 轮换与风控值漂移）
 - [ ] v1.0 Go 重写单二进制；IPv6 出口审计
 
 ## 免责声明

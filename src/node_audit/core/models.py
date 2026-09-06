@@ -53,6 +53,7 @@ class NodeReport:
 
     geo_match: str = "unknown"  # match | mismatch | unknown
     deep: DeepCheck | None = None
+    services: dict = field(default_factory=dict)  # service -> {status, region, note}
     verdict: str = ""
     notes: list = field(default_factory=list)
     error: str | None = None

@@ -137,7 +137,7 @@ class IsolatedCore:
         self.log = log
         self.proc: subprocess.Popen | None = None
         self.api = None  # 内核控制器客户端，start 成功后可用
-        self._tmpdir: tempfile.TemporaryDirectory | None = None
+        self._tmpdir: str | None = None
         self._errfh = None
 
     def __enter__(self) -> "IsolatedCore":
@@ -163,14 +163,16 @@ class IsolatedCore:
         return True
 
     def start(self) -> None:
-        self._tmpdir = tempfile.TemporaryDirectory(prefix="node-audit-")
-        cfgpath = Path(self._tmpdir.name) / "audit-config.yaml"
+        # 不用 TemporaryDirectory：Windows 上内核进程释放文件句柄有延迟，
+        # cleanup() 可能抛 PermissionError 并掩盖审计结果；改用 rmtree(ignore_errors)
+        self._tmpdir = tempfile.mkdtemp(prefix="node-audit-")
+        cfgpath = Path(self._tmpdir) / "audit-config.yaml"
         cfgpath.write_text(self.config_text, encoding="utf-8")
-        errpath = Path(self._tmpdir.name) / "core-stderr.log"
+        errpath = Path(self._tmpdir) / "core-stderr.log"
         self._errfh = open(errpath, "wb")
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         self.proc = subprocess.Popen(
-            [self.core_bin, "-d", self._tmpdir.name, "-f", str(cfgpath)],
+            [self.core_bin, "-d", self._tmpdir, "-f", str(cfgpath)],
             stdout=subprocess.DEVNULL, stderr=self._errfh,
             creationflags=flags if sys.platform == "win32" else 0,
         )
@@ -213,7 +215,8 @@ class IsolatedCore:
             self._errfh.close()
             self._errfh = None
         if self._tmpdir:
-            self._tmpdir.cleanup()
+            # 句柄释放可能滞后于进程退出，清理失败不抛错（留给系统临时目录自然回收）
+            shutil.rmtree(self._tmpdir, ignore_errors=True)
             self._tmpdir = None
 
 

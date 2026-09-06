@@ -117,6 +117,18 @@ def _check_node(rep: NodeReport, proxy: str, opts, log=print) -> None:
             rep.speed_skipped = sp.get("reason") or "测速失败"
             log(f"    速度  失败: {rep.speed_skipped}")
 
+    if opts.services:
+        from .services import PROBES, SERVICE_SHORT
+        for name in opts.services:
+            probe = PROBES.get(name)
+            if probe is None:
+                continue
+            res = probe(proxy)
+            rep.services[name] = res
+            short = SERVICE_SHORT.get(name, name[:3].upper())
+            region = f"({res['region']})" if res.get("region") else ""
+            log(f"    服务  {short}: {res['status']}{region}")
+
     if opts.deep == "off":
         return
     if not ((rep.hosting is False) or opts.deep == "all"):
