@@ -65,6 +65,8 @@ node-audit audit --mode isolated --yes --deep all \
 | `--port-base 41000` | isolated 模式独立端口起始值 |
 | `--core PATH` | isolated 模式的 mihomo 内核路径（默认自动查找 Clash Verge 安装目录） |
 | `--out DIR` | 报告输出目录（默认 `./node-audit-report`） |
+| `--db PATH` | 历史趋势 SQLite 路径（默认 `<out>/history.db`） |
+| `--no-history` | 不写历史库、不生成 HTML 趋势报告 |
 | `--api / --pipe / --secret / --mixed-port` | 手动指定控制器与代理端口（默认自动发现） |
 
 ## 检查项
@@ -85,6 +87,18 @@ node-audit audit --mode isolated --yes --deep all \
 | 探针 | TikTok 风控（正常 / 人机验证 / 封禁） | tiktok.com |
 
 判定口径：`hosting=true` 直接判**机房**（生死线）；`hosting=false` 为**住宅候选**，再由 ping0 细分为「疑似真家宽·原生」等；官方 API 与网页源互相交叉验证——单一数据源漏判时（例如 ip-api 未标记某 CDN 机房段），其他来源的标记会写进 notes。
+
+## 输出物
+
+每次审计在输出目录生成四样东西：
+
+| 文件 | 用途 |
+|---|---|
+| `audit-<时间戳>.html` | **推荐查看**：自包含单文件（内联样式、无外部资源），含本次结果、判定分布与历史趋势表 |
+| `audit-<时间戳>.md` / `.json` | 人读明细 / 程序可读全量字段 |
+| `history.db` | SQLite 历史库：每次审计的每节点结果。趋势视图据此生成，能看到家宽 IP 轮换、RTT/速度漂移、判定变化 |
+
+中断安全：审计中途 Ctrl+C 会保留已完成节点的部分报告并自动还原代理状态。
 
 ## 服务风控探针与隐私保证（v0.3）
 
@@ -126,8 +140,8 @@ python tests/run_all.py   # 零依赖
 - [x] v0.1 attach 模式快筛 + 深检 + 表格/JSON/Markdown 报告
 - [x] v0.2 isolated 零干扰模式；IPQS / AbuseIPDB 官方 API；测速硬时限；atexit 状态还原兜底；单元测试
 - [x] v0.3 服务风控探针（OpenAI / Netflix / TikTok），无 Cookie 匿名实测
-- [ ] v0.4 HTML 报告 + SQLite 历史趋势（看家宽 IP 轮换与风控值漂移）
-- [ ] v1.0 Go 重写单二进制；IPv6 出口审计
+- [x] v0.4 自包含 HTML 报告 + SQLite 历史趋势（家宽 IP 轮换、RTT/速度/判定跨次对比）
+- [ ] v1.0 Go 重写单二进制；IPv6 出口审计；SVG 趋势图
 
 ## 免责声明
 

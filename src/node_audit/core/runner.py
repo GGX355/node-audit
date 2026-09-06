@@ -198,10 +198,11 @@ def run_attach(api, targets: list, opts, log=print) -> list:
                 pass
 
     atexit.register(safety)
-    api.patch_configs({"mode": "global"})
-    time.sleep(0.8)
     results: list[NodeReport] = []
     try:
+        # 注意：切换动作必须在 try 内，保证任何时点 Ctrl+C 都会走还原
+        api.patch_configs({"mode": "global"})
+        time.sleep(0.8)
         total = len(targets)
         for idx, (name, ptype) in enumerate(targets, 1):
             log(f"[{idx}/{total}] {name}")
@@ -210,7 +211,8 @@ def run_attach(api, targets: list, opts, log=print) -> list:
             results.append(_audit_one(name, ptype, opts.proxy_url, opts, log))
     except KeyboardInterrupt:
         restore("中断")
-        raise
+        log(f"已中断：返回已完成 {len(results)}/{len(targets)} 个节点的部分报告")
+        return results
     finally:
         restore("结束")
         atexit.unregister(safety)

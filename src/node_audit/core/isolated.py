@@ -249,6 +249,6 @@ def run_isolated(targets: list, opts, core_bin: str, log=print) -> list:
                     _audit_one(name, ptype, f"http://127.0.0.1:{port_map[name]}", opts, log)
                 )
     except KeyboardInterrupt:
-        log("[isolated] 已中断，内核实例已关闭")
-        raise
+        log(f"[isolated] 已中断：返回已完成 {len(results)}/{len(targets)} 个节点的部分报告")
+        return results
     return results
