@@ -22,7 +22,7 @@ from .clash.transport import PipeTransport, TcpTransport
 from .core.filters import heavy_traffic, is_real_node, rate_multiplier, region_from_name
 from .core.isolated import find_core_binary, run_isolated
 from .core.runner import run_attach
-from .core.services import PROBES, SERVICE_SHORT, STATUS_MARK, STATUS_CN
+from .core.services import PROBES, SERVICE_SHORT, STATUS_MARK
 from .report.output import write_json, write_markdown
 from .report.table import render
 
@@ -246,7 +246,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="node-audit", description="Clash/mihomo 节点质量审计：IP 身份·纯净度·延迟·测速"
     )
-    parser.add_argument("--version", action="version", version="node-audit 0.4.0")
+    parser.add_argument("--version", action="version", version="node-audit 0.4.1")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_disc = sub.add_parser("discover", help="探测控制器并列出节点（只读，不做任何切换）")
@@ -255,8 +255,9 @@ def main(argv=None) -> int:
 
     p_aud = sub.add_parser("audit", help="对节点批量执行质量审计")
     _add_common(p_aud)
-    p_aud.add_argument("--mode", choices=["attach", "isolated"], default="attach",
-                       help="attach=接管运行中实例逐节点切换（默认）；isolated=拉起独立内核+每节点独立端口，零干扰")
+    p_aud.add_argument("--mode", choices=["attach", "isolated"], default="isolated",
+                       help="isolated=独立内核零干扰（默认，推荐）；attach=接管运行中实例"
+                            "逐节点切换（期间你的全部流量会随节点跳转，涉及登录态账号时慎用）")
     p_aud.add_argument("--include", help="只测名称匹配此正则的节点")
     p_aud.add_argument("--exclude", help="排除名称匹配此正则的节点")
     p_aud.add_argument("--limit", type=int, default=None, help="最多测前 N 个节点")

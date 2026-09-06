@@ -30,7 +30,11 @@ class Discovery:
         else:
             chan = f"tcp http://{self.host}:{self.port}"
         sec = "secret 已读取" if self.secret else "secret 无"
-        cfg = self.config_path or "配置文件未找到（使用默认值）"
+        if self.config_path:
+            # 只显示文件名，不显示完整路径：报告会被分享，避免泄露本地用户名
+            cfg = f"配置文件 {Path(self.config_path).name}（Verge Rev）"
+        else:
+            cfg = "配置文件未找到（使用默认值）"
         return f"{chan} | mixed-port {self.mixed_port} | {sec} | {cfg}"
 
 
