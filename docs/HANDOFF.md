@@ -2,7 +2,7 @@
 
 仓库：https://github.com/GGX355/node-audit  
 分支：`main`  
-当前代码版本：**0.9.0**（控制台日期刻度 + CSV）
+当前代码版本：**0.10.0**（GitHub 首页 + 软件内使用说明）
 
 下载给用户用的程序：GitHub **Releases** 里的 `node-audit.exe`（不要从源码树里找，exe 不进 git）。
 
@@ -24,7 +24,7 @@ git clone https://github.com/GGX355/node-audit.git
 cd node-audit
 $env:PYTHONPATH='src'
 python tests/run_all.py          # 应全部 passed
-python -m node_audit --version   # node-audit 0.9.0
+python -m node_audit --version   # node-audit 0.10.0
 ```
 
 打包：
@@ -44,13 +44,13 @@ powershell -ExecutionPolicy Bypass -File scripts\build-exe.ps1
 
 **v0.8** 一键 exe（菜单 / ini / 日志 / Releases）。
 
-**v0.9**
+**v0.9** 控制台日期刻度、PTR/ASN、CSV。
 
-- 控制台折线日期刻度 + 点上悬停日期
-- IP 时间轴显示日期
-- 身份卡补 PTR / ASN / RDAP / 类型
-- 导出 CSV
-- 归档 HTML 趋势表头改成月-日 时:分
+**v0.10**
+
+- GitHub README 改成给使用者看的首页（下载 / 30 秒上手 / 报告 / 设置 / FAQ）
+- 软件内使用说明：双击菜单 4、`node-audit help`、控制台右上角「说明」/`?`
+- 报告目录和 exe 旁边会写 `使用说明.html`
 
 ---
 

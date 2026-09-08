@@ -7,4 +7,5 @@ build/
 reports/
 node-audit-report/
 /node-audit.ini
+/使用说明.html
 *.spec

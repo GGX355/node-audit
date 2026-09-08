@@ -7,6 +7,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from ..guide import guide_article_html
+
 
 def _json_for_script(payload: dict) -> str:
     raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -45,6 +47,29 @@ header.top{
   border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer
 }
 .csv:hover{color:var(--text);border-color:rgba(122,162,255,.55)}
+.help-ov{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:20;
+  padding:24px 16px;overflow:auto
+}
+.help-ov.on{display:block}
+.help-card{
+  max-width:820px;margin:0 auto;background:#12141a;border:1px solid var(--stroke);
+  border-radius:16px;padding:8px 22px 28px;box-shadow:var(--shadow);color:var(--text)
+}
+.help-card h2{font-size:18px;margin:22px 0 8px}
+.help-card h1{display:none}
+.help-top{display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;background:#12141a;padding:12px 0;border-bottom:1px solid var(--stroke)}
+.help-top b{font-size:16px}
+.help-card p,.help-card li,.help-card dd,.help-card td{font-size:14px;line-height:1.6}
+.help-card table{border-collapse:collapse;width:100%;margin:8px 0}
+.help-card th,.help-card td{border:1px solid var(--stroke);padding:5px 8px;text-align:left;vertical-align:top}
+.help-card code,.help-card kbd,.help-card pre{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.help-card code,.help-card kbd{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px}
+.help-card pre{background:rgba(255,255,255,.06);padding:10px;border-radius:8px;overflow:auto}
+.help-card .guide-ver,.help-card .sub{color:var(--muted);font-size:12px}
+.help-card dt{font-weight:650;margin-top:10px}
+.help-card dd{margin:2px 0 0;color:var(--muted)}
 .body{display:grid;grid-template-columns:280px 1fr;min-height:0;flex:1}
 aside.side{
   border-right:1px solid var(--stroke);background:rgba(18,20,26,.72);
@@ -359,6 +384,14 @@ _JS = r"""
   }
   var csvBtn = $("csv");
   if (csvBtn) csvBtn.addEventListener("click", downloadCsv);
+  function openHelp(){ var h=$("help"); if(h) h.classList.add("on"); }
+  function closeHelp(){ var h=$("help"); if(h) h.classList.remove("on"); }
+  var helpBtn = $("help-btn");
+  if (helpBtn) helpBtn.addEventListener("click", openHelp);
+  var helpClose = $("help-close");
+  if (helpClose) helpClose.addEventListener("click", closeHelp);
+  var helpOv = $("help");
+  if (helpOv) helpOv.addEventListener("click", function(e){ if (e.target===$("help")) closeHelp(); });
   $("q").addEventListener("input", function(e){ q=e.target.value; render(); });
   document.querySelectorAll(".chips button").forEach(function(btn){
     btn.addEventListener("click", function(){
@@ -372,7 +405,9 @@ _JS = r"""
     selected=b.getAttribute("data-name"); render();
   });
   document.addEventListener("keydown", function(e){
+    if (e.key==="Escape"){ closeHelp(); return; }
     if (e.target && e.target.tagName==="INPUT") return;
+    if (e.key==="?" || e.key==="F1"){ e.preventDefault(); openHelp(); return; }
     if (e.key!=="j" && e.key!=="k") return;
     var items=list(); var i=items.findIndex(function(n){ return n.name===selected; });
     if (e.key==="j") i=Math.min(items.length-1, i+1);
@@ -394,7 +429,8 @@ def render_dashboard(payload: dict) -> str:
         "<div id='na-app'>"
         "<header class='top'><i class='mark'></i><span class='brand'>node-audit</span>"
         "<span class='meta' id='meta'></span>"
-        "<button class='csv' id='csv' type='button'>导出 CSV</button></header>"
+        "<button class='csv' id='csv' type='button'>导出 CSV</button>"
+        "<button class='csv' id='help-btn' type='button'>说明</button></header>"
         "<div id='demo-banner' class='demo'>演示数据，不是你的订阅。"
         "跑 <code>node-audit audit --mode isolated --yes</code> 之后打开 "
         "<code>node-audit-report/latest.html</code> 才是当前订阅的全量节点。</div>"
@@ -411,11 +447,15 @@ def render_dashboard(payload: dict) -> str:
         "<button data-f='hist'>历史</button>"
         "</div></div>"
         "<div id='list'></div>"
-        "<div class='hint'>j / k 切换节点 · 「历史」= 上次订阅残留</div>"
+        "<div class='hint'>j / k 切换节点 · ? 使用说明 · 「历史」= 上次订阅残留</div>"
         "</aside>"
         "<main class='main'><div class='kpis' id='kpis'></div>"
         "<div id='detail'></div></main>"
         "</div></div>"
+        "<div id='help' class='help-ov' role='dialog' aria-label='使用说明'>"
+        "<div class='help-card'><div class='help-top'><b>使用说明</b>"
+        "<button class='csv' id='help-close' type='button'>关闭</button></div>"
+        f"{guide_article_html()}</div></div>"
         f"<script type='application/json' id='na-data'>{data}</script>"
         f"<script>{_JS}</script>"
         "</body></html>"

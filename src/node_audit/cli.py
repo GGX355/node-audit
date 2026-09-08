@@ -421,6 +421,7 @@ def _menu(has_report: bool) -> str:
     print("  1) 开始全量审计（推荐，约十几～二十分钟）")
     print("  2) 打开上次报告" + ("" if has_report else "  ← 还没有，需要先跑过 1"))
     print("  3) 只列出将测的节点，不真正测")
+    print("  4) 打开使用说明")
     print("  Q) 退出")
     try:
         raw = input("选择 [1]: ").strip().lower()
@@ -428,15 +429,29 @@ def _menu(has_report: bool) -> str:
         return "1"
     if raw in ("", "1"):
         return "1"
-    if raw in ("2", "3", "q"):
-        return raw
+    if raw in ("2", "3", "4", "h", "help", "q"):
+        return "4" if raw in ("h", "help") else raw
     print(f"不认识「{raw}」，按 1 开始审计。")
     return "1"
 
 
+def cmd_help(_args=None) -> int:
+    """写出并打开使用说明.html（exe 旁边，或当前目录）。"""
+    from .guide import write_guide
+    from .paths import app_dir, is_frozen
+    dest = app_dir() / "使用说明.html"
+    write_guide(dest)
+    print(f"使用说明: {dest}")
+    if is_frozen() or _interactive():
+        if _open_html(dest):
+            print("已在浏览器打开。控制台里也可点右上角「说明」，或按 ?")
+    return 0
+
+
 def cmd_run(args) -> int:
     """双击 / 无参数入口：菜单 + 读 ini + 打日志 + 跑完打开报告。"""
-    from .paths import default_ini_path, default_out_dir
+    from .guide import write_guide
+    from .paths import app_dir, default_ini_path, default_out_dir, is_frozen
     from .settings import load_settings, write_template_if_missing
 
     ini = Path(args.ini) if getattr(args, "ini", None) else default_ini_path()
@@ -448,6 +463,9 @@ def cmd_run(args) -> int:
     ns = _audit_ns_from_settings(settings)
     outdir = Path(ns.out)
     outdir.mkdir(parents=True, exist_ok=True)
+    write_guide(outdir / "使用说明.html")
+    if is_frozen():
+        write_guide(app_dir() / "使用说明.html")
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     log_path = outdir / f"audit-{stamp}.log"
     latest_log = outdir / "latest.log"
@@ -472,6 +490,8 @@ def cmd_run(args) -> int:
                     return 0
                 print("还没有 latest.html。请先选 1 跑一次审计。")
                 return 1
+            if choice == "4":
+                return cmd_help(args)
             if choice == "3":
                 ns.dry_run = True
         else:
@@ -573,6 +593,9 @@ def main(argv=None) -> int:
     p_run.add_argument("--yes", "-y", action="store_true",
                        help="跳过菜单，直接全量审计（计划任务用）")
     p_run.set_defaults(func=cmd_run)
+
+    p_help = sub.add_parser("help", help="打开使用说明（浏览器）")
+    p_help.set_defaults(func=cmd_help)
 
     p_srv = sub.add_parser("serve", help="在本机打开控制台页面（只监听 127.0.0.1）")
     p_srv.add_argument("--out", default="node-audit-report", help="报告目录（默认 ./node-audit-report）")

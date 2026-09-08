@@ -99,6 +99,9 @@ def test_cmd_run_yes_invokes_audit_and_logs():
             logs = list(out.glob("audit-*.log"))
             assert logs, "should write a timestamped log"
             assert (out / "latest.log").is_file()
+            guide = out / "使用说明.html"
+            assert guide.is_file()
+            assert "node-audit.ini" in guide.read_text(encoding="utf-8")
             text = (out / "latest.log").read_text(encoding="utf-8")
             assert "node-audit" in text
             assert "开始全量审计" in text
