@@ -130,6 +130,62 @@ def test_identity_v6_without_whois_still_keeps_address():
     assert out["hosting"] is None
 
 
+def test_ping0_queries_ip_path_not_homepage():
+    seen = []
+    orig = checks.http_get
+
+    def fake(url, proxy, timeout=15, headers=None):
+        seen.append(url)
+        html = (
+            "<html><body><div>家庭宽带 IP</div><div>原生 IP</div>"
+            "<div>7%</div><div>极度纯净</div></body></html>"
+        )
+        return 200, html.encode()
+
+    checks.http_get = fake
+    try:
+        out = checks.check_ping0("1.2.3.4", "http://127.0.0.1:1")
+    finally:
+        checks.http_get = orig
+    assert any("/ip/1.2.3.4" in u for u in seen)
+    assert out["available"] is True
+    assert "家庭宽带" in (out["ip_type"] or "")
+    assert out["risk_pct"] == 7
+
+
+def test_ippure_json_residential():
+    orig = checks.http_get
+    checks.http_get = _identity_fake({
+        "my.ippure.com": (200, b'{"ip":"36.1.1.1","fraudScore":8,'
+                          b'"isResidential":true,"isBroadcast":false,'
+                          b'"country":"Taiwan","countryCode":"TW","city":"Taipei",'
+                          b'"asn":3462,"asOrganization":"CHT"}'),
+    })
+    try:
+        out = checks.check_ippure("http://x")
+    finally:
+        checks.http_get = orig
+    assert out["available"] is True
+    assert out["is_residential"] is True
+    assert out["fraud_score"] == 8
+
+
+def test_identity_falls_back_to_ippure():
+    orig = checks.http_get
+    checks.http_get = _identity_fake({
+        "my.ippure.com": (200, b'{"ip":"9.9.9.9","isResidential":false,'
+                          b'"country":"US","countryCode":"US","city":"LA",'
+                          b'"asn":1,"asOrganization":"Foo"}'),
+    })
+    try:
+        out = checks.check_identity("http://x")
+    finally:
+        checks.http_get = orig
+    assert out["query"] == "9.9.9.9"
+    assert out["hosting"] is True
+    assert out["identity_source"] == "ippure"
+
+
 def test_ipqs_goes_direct_ignores_proxy():
     seen = []
     orig = checks.http_get

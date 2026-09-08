@@ -75,6 +75,20 @@ def _ipapi_identity(proxy: str, timeout: float) -> dict | None:
         return None
 
 
+def _ipify4(proxy: str, timeout: float) -> str | None:
+    """api.ipify.org：纯 v4。ip-api 被墙/限流时的退路。"""
+    try:
+        status, data = http_get("https://api.ipify.org", proxy, timeout)
+        if status != 200:
+            return None
+        text = data.decode().strip()
+        if text and "." in text and ":" not in text:
+            return text
+    except Exception:
+        pass
+    return None
+
+
 def _ipify6(proxy: str, timeout: float) -> str | None:
     """api64.ipify.org：有 v6 出口则返回含 ':' 的地址，否则是 v4。"""
     try:
@@ -125,18 +139,117 @@ def _ipwho_identity(ip: str, proxy: str, timeout: float) -> dict | None:
         return None
 
 
+def check_ippure(proxy: str, timeout: float = 15) -> dict:
+    """IPPure 公开 JSON：调用者出口的风险分 / 是否住宅 / 是否广播。无验证码。"""
+    out = {"available": False, "ip": None, "fraud_score": None,
+           "is_residential": None, "is_broadcast": None, "is_datacenter": None,
+           "country": None, "country_code": None, "city": None,
+           "asn": None, "org": None}
+    try:
+        status, data = http_get("https://my.ippure.com/v1/info", proxy, timeout)
+        if status != 200:
+            return out
+        d = json.loads(data.decode())
+    except Exception:
+        return out
+    ip = d.get("ip")
+    if not ip:
+        return out
+    res, dc = d.get("isResidential"), d.get("isDataCenter")
+    out.update(
+        available=True, ip=ip,
+        fraud_score=d.get("fraudScore"),
+        is_residential=res if isinstance(res, bool) else None,
+        is_broadcast=d.get("isBroadcast") if isinstance(d.get("isBroadcast"), bool) else None,
+        is_datacenter=dc if isinstance(dc, bool) else None,
+        country=d.get("country"),
+        country_code=d.get("countryCode"),
+        city=d.get("city"),
+        asn=d.get("asn"),
+        org=d.get("asOrganization"),
+    )
+    return out
+
+
+def check_iplark(proxy: str, timeout: float = 15) -> dict:
+    """iplark ipdata JSON（/check 页面过简）。访问者 IP 的 trust / 机房 / VPN。"""
+    out = {"available": False, "trust_score": None, "is_datacenter": None,
+           "is_vpn": None, "is_proxy": None, "ip": None}
+    try:
+        status, data = http_get(
+            "https://iplark.com/ipapi/public/ipinfo?db=ipdata", proxy, timeout)
+        if status != 200:
+            return out
+        d = json.loads(data.decode())
+    except Exception:
+        return out
+    if not isinstance(d, dict):
+        return out
+    threat = d.get("threat") if isinstance(d.get("threat"), dict) else {}
+    out["ip"] = d.get("ip") or d.get("query")
+    ts = d.get("trust_score") if d.get("trust_score") is not None else threat.get("trust_score")
+    if ts is not None:
+        try:
+            out["trust_score"] = int(ts)
+        except (TypeError, ValueError):
+            pass
+    for key in ("is_datacenter", "is_vpn", "is_proxy"):
+        val = d.get(key)
+        if val is None:
+            val = threat.get(key)
+        if val is not None:
+            out[key] = bool(val)
+    out["available"] = bool(out["ip"] or out["trust_score"] is not None
+                            or out["is_datacenter"] is not None)
+    return out
+
+
+def _identity_from_ippure(ipu: dict) -> dict | None:
+    ip = (ipu or {}).get("ip")
+    if not ip:
+        return None
+    v6 = ":" in ip
+    hosting = None
+    if ipu.get("is_residential") is True:
+        hosting = False
+    elif ipu.get("is_residential") is False or ipu.get("is_datacenter") is True:
+        hosting = True
+    asn, org = ipu.get("asn"), ipu.get("org")
+    as_str = f"AS{asn}" + (f" {org}" if org else "") if asn else None
+    rec = {
+        "query": None if v6 else ip,
+        "country": ipu.get("country"),
+        "countryCode": ipu.get("country_code"),
+        "city": ipu.get("city"),
+        "isp": org, "org": org, "as": as_str, "asname": org,
+        "proxy": None, "hosting": hosting,
+    }
+    return {
+        "query": rec["query"], "query6": ip if v6 else None,
+        "v4": None if v6 else rec, "v6": rec if v6 else None,
+        "identity_source": "ippure",
+        **{k: rec[k] for k in ("country", "countryCode", "city", "isp", "org",
+                               "as", "asname", "proxy", "hosting")},
+    }
+
+
 def check_identity(proxy: str, timeout: float = 15) -> dict | None:
     """双栈出口身份。v4 走 ip-api（含 hosting）；v6 走 ipify + ipwho.is。
 
     返回 None 仅当 v4 与 v6 都拿不到。判定字段优先用带 hosting 的那一侧。
     """
     v4 = _ipapi_identity(proxy, timeout)
+    if not v4:
+        ip4 = _ipify4(proxy, timeout)
+        if ip4:
+            v4 = _ipwho_identity(ip4, proxy, timeout) or {"query": ip4}
     v6_addr = _ipify6(proxy, timeout)
     v6 = _ipwho_identity(v6_addr, proxy, timeout) if v6_addr else None
     if v6_addr and not v6:
         v6 = {"query": v6_addr}
     if not v4 and not v6:
-        return None
+        ident = _identity_from_ippure(check_ippure(proxy, timeout))
+        return ident
     out = {
         "query": (v4 or {}).get("query"),
         "query6": (v6 or {}).get("query") or v6_addr,
@@ -279,7 +392,8 @@ def check_scamalytics(ip: str | None, proxy: str, timeout: float = 20) -> dict:
     if not ip:
         return out
     try:
-        status, data = http_get(f"https://scamalytics.com/ip/{ip}", proxy, timeout)
+        status, data = http_get(
+            f"https://scamalytics.com/ip/{ip}", proxy, timeout, headers=_HTML_HEADERS)
     except Exception:
         return out
     if status != 200:
@@ -305,33 +419,66 @@ def check_scamalytics(ip: str | None, proxy: str, timeout: float = 20) -> dict:
     return out
 
 
-def check_ping0(proxy: str, timeout: float = 25) -> dict:
-    """ping0.cc 首页显示访问者自身 IP 的判定（best-effort）。
+_HTML_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+}
 
-    值字段在页面里是独立文本行（家庭宽带 IP / IDC机房 IP、原生 IP / 广播 IP、
-    N% + 风险档位），用"精确行匹配"避免被 FAQ 文案干扰。
-    """
+
+def check_ping0(ip: str | None, proxy: str, timeout: float = 25) -> dict:
+    """ping0.cc 查指定 IP（/ip/{addr}），比扒首页稳：首页 FAQ 会干扰，且常反爬。"""
     out = {"available": False, "ip_type": None, "native": None,
            "risk_pct": None, "risk_level": None}
-    try:
-        status, data = http_get("https://ping0.cc", proxy, timeout)
-    except Exception:
+    urls = []
+    if ip:
+        urls.append(f"https://ping0.cc/ip/{quote(ip, safe='')}")
+    urls.append("https://ping0.cc/")
+    html = ""
+    for url in urls:
+        try:
+            status, data = http_get(url, proxy, timeout, headers=_HTML_HEADERS)
+        except Exception:
+            continue
+        if status != 200:
+            continue
+        html = data.decode(errors="replace")
+        if html:
+            break
+    if not html:
         return out
-    if status != 200:
-        return out
-    lines = _strip_text(data.decode(errors="replace"))
-    out["available"] = True
+    lines = _strip_text(html)
+    faq = False
     type_words = ("家庭宽带 IP", "家庭宽带IP", "IDC机房 IP", "IDC机房IP")
     native_words = ("原生 IP", "原生IP", "广播 IP", "广播IP")
     for i, line in enumerate(lines):
-        if out["ip_type"] is None and line in type_words:
-            out["ip_type"] = line
-        if out["native"] is None and line in native_words:
-            out["native"] = line
-        if out["risk_pct"] is None and re.fullmatch(r"\d{1,3}%", line):
-            out["risk_pct"] = int(line[:-1])
-            if i + 1 < len(lines):
-                out["risk_level"] = lines[i + 1]
+        if "常见问题" in line or line.startswith("Q") and "识别" in line:
+            faq = True
+        if faq:
+            continue
+        if out["ip_type"] is None:
+            if line in type_words:
+                out["ip_type"] = line
+            elif line in ("家庭宽带", "家庭宽带IP"):
+                out["ip_type"] = "家庭宽带 IP"
+            elif line in ("IDC机房IP", "IDC机房") or line == "IDC机房 IP":
+                out["ip_type"] = "IDC机房 IP"
+        if out["native"] is None:
+            if line in native_words:
+                out["native"] = line
+            elif line.strip() in ("原生 IP", "原生IP", "原生"):
+                out["native"] = "原生 IP"
+            elif line.strip() in ("广播 IP", "广播IP", "广播"):
+                out["native"] = "广播 IP"
+        if out["risk_pct"] is None:
+            m = re.fullmatch(r"(\d{1,3})%\s*(.*)", line)
+            if m:
+                out["risk_pct"] = int(m.group(1))
+                rest = m.group(2).strip()
+                if rest:
+                    out["risk_level"] = rest
+                elif i + 1 < len(lines):
+                    out["risk_level"] = lines[i + 1]
+    out["available"] = bool(out["ip_type"] or out["native"] or out["risk_pct"] is not None)
     return out
 
 

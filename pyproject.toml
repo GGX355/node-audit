@@ -1,6 +1,6 @@
 [project]
 name = "node-audit"
-version = "0.10.0"
+version = "0.11.0"
 description = "Clash/mihomo 节点质量审计：IP 身份 · 纯净度 · 延迟 · 测速"
 readme = "README.md"
 requires-python = ">=3.9"

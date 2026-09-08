@@ -230,6 +230,10 @@ def save_run(reports, meta: dict, db_path) -> dict:
             for r in reports:
                 p0 = (r.deep.ping0 if r.deep else None) or {}
                 sc = (r.deep.scamalytics if r.deep else None) or {}
+                ipu = (r.deep.ippure if r.deep else None) or {}
+                risk = p0.get("risk_pct")
+                if risk is None:
+                    risk = ipu.get("fraud_score")
                 conn.execute(
                     """INSERT INTO results(
                        run_id, node_name, node_type, exit_ip, exit_ip6, country_code, city,
@@ -246,7 +250,7 @@ def save_run(reports, meta: dict, db_path) -> dict:
                         r.rtt_min, r.rtt.get("gstatic"), r.rtt.get("cloudflare"),
                         r.speed_mbps, int(bool(r.speed_partial)),
                         r.geo_match, None if r.rtt_suspect is None else int(r.rtt_suspect),
-                        p0.get("risk_pct"), sc.get("score"),
+                        risk, sc.get("score"),
                         r.verdict, json.dumps(r.notes, ensure_ascii=False),
                         json.dumps(r.services, ensure_ascii=False),
                         json.dumps(r.deep.to_dict() if r.deep else None, ensure_ascii=False),

@@ -12,8 +12,9 @@ import atexit
 import time
 
 from .checks import (LATENCY_PROBE_TARGETS, check_abuseipdb, check_identity,
-                     check_ipqs, check_ping0, check_ptr, check_rdap,
-                     check_scamalytics, measure_latency, speed_test)
+                     check_iplark, check_ippure, check_ipqs, check_ping0,
+                     check_ptr, check_rdap, check_scamalytics, measure_latency,
+                     speed_test)
 from .filters import heavy_traffic, rate_multiplier, region_from_name
 from .models import DeepCheck, NodeReport, build_verdict
 
@@ -153,8 +154,10 @@ def _check_node(rep: NodeReport, proxy: str, opts, log=print) -> None:
         return
 
     deep = DeepCheck()
+    deep.ippure = check_ippure(proxy)
+    deep.iplark = check_iplark(proxy)
+    deep.ping0 = check_ping0(primary_ip, proxy)
     deep.scamalytics = check_scamalytics(primary_ip, proxy)
-    deep.ping0 = check_ping0(proxy)
     if opts.ipqs_key:
         deep.ipqs = check_ipqs(primary_ip, opts.ipqs_key, proxy)
     if opts.abuseipdb_key:
@@ -163,9 +166,15 @@ def _check_node(rep: NodeReport, proxy: str, opts, log=print) -> None:
 
     p0 = deep.ping0 or {}
     sc = deep.scamalytics or {}
+    ipu = deep.ippure or {}
+    lk = deep.iplark or {}
     ipqs = deep.ipqs or {}
     ab = deep.abuseipdb or {}
     extra = []
+    if ipu.get("fraud_score") is not None:
+        extra.append(f"ippure={ipu['fraud_score']}")
+    if lk.get("trust_score") is not None:
+        extra.append(f"iplark信任={lk['trust_score']}")
     if ipqs.get("fraud_score") is not None:
         extra.append(f"ipqs={ipqs['fraud_score']}")
     if ab.get("score") is not None:

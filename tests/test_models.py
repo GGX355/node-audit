@@ -26,6 +26,18 @@ def test_residential_with_ping0_family():
     assert verdict == "疑似真家宽·原生·风控7%"
 
 
+def test_residential_ippure_fills_when_ping0_empty():
+    rep = _rep(region_code="TW", region_cn="台湾", country_code="TW",
+               hosting=False,
+               deep=DeepCheck(ippure={"available": True, "is_residential": True,
+                                      "is_broadcast": False, "fraud_score": 12}))
+    verdict, notes = build_verdict(rep)
+    assert verdict.startswith("疑似真家宽")
+    assert "原生" in verdict
+    assert "风控12%" in verdict
+    assert not any("均不可用" in n for n in notes)
+
+
 def test_ipapi_miss_but_ping0_idc():
     # ip-api 的 hosting 字段失灵（报住宅）但 ping0 细分出 IDC
     rep = _rep(region_code="KR", region_cn="韩国", country_code="KR",

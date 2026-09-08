@@ -12,6 +12,8 @@ class DeepCheck:
 
     scamalytics: dict | None = None  # {available, score, level, datacenter}
     ping0: dict | None = None        # {available, ip_type, native, risk_pct, risk_level}
+    ippure: dict | None = None       # {available, fraud_score, is_residential, is_broadcast}
+    iplark: dict | None = None       # {available, trust_score, is_datacenter, is_vpn}
     ipqs: dict | None = None         # {available, fraud_score, proxy, vpn, tor}
     abuseipdb: dict | None = None    # {available, score, reports}
 
@@ -112,17 +114,34 @@ def build_verdict(rep: NodeReport) -> tuple[str, list[str]]:
         if deep:
             p0 = deep.ping0 or {}
             sc = deep.scamalytics or {}
+            ipu = deep.ippure or {}
+            lk = deep.iplark or {}
             if p0.get("ip_type"):
                 if "家庭宽带" in p0["ip_type"]:
                     verdict = "疑似真家宽"
                 elif "IDC" in p0["ip_type"] or "机房" in p0["ip_type"]:
                     verdict = "疑似IDC"
+            elif ipu.get("is_residential") is True:
+                verdict = "疑似真家宽"
+            elif ipu.get("is_residential") is False:
+                verdict = "疑似IDC"
             if p0.get("native"):
                 verdict += "·" + p0["native"].replace(" IP", "")
-            if p0.get("risk_pct") is not None:
-                verdict += f"·风控{p0['risk_pct']}%"
+            elif ipu.get("is_broadcast") is True:
+                verdict += "·广播"
+            elif ipu.get("is_broadcast") is False:
+                verdict += "·原生"
+            risk = p0.get("risk_pct")
+            if risk is None:
+                risk = ipu.get("fraud_score")
+            if risk is not None:
+                verdict += f"·风控{risk}%"
             if sc.get("datacenter") == "Yes":
                 notes.append("Scamalytics 标记 Datacenter")
+            if lk.get("is_datacenter"):
+                notes.append("iplark 标记机房")
+            if lk.get("is_vpn") or lk.get("is_proxy"):
+                notes.append("iplark 标记 VPN/代理")
             ipqs = deep.ipqs or {}
             if ipqs.get("fraud_score") is not None:
                 if ipqs["fraud_score"] >= 75:
@@ -132,7 +151,8 @@ def build_verdict(rep: NodeReport) -> tuple[str, list[str]]:
             ab = deep.abuseipdb or {}
             if ab.get("score") is not None and ab["score"] >= 50:
                 notes.append(f"AbuseIPDB 滥用置信度 {ab['score']}%（举报 {ab.get('reports', '?')} 次）")
-            if not p0.get("available") and not sc.get("available"):
+            if (not p0.get("available") and not sc.get("available")
+                    and not ipu.get("available") and not lk.get("available")):
                 notes.append("网页深检数据源均不可用")
     else:
         verdict = "未知(身份查询失败)"

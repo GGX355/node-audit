@@ -130,7 +130,7 @@ svg.spark{width:100%;height:72px;display:block}
   aside.side{border-right:0;border-bottom:1px solid var(--stroke);max-height:40vh}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
-</style></head><body><div id='na-app'><header class='top'><i class='mark'></i><span class='brand'>node-audit</span><span class='meta' id='meta'></span><button class='csv' id='csv' type='button'>导出 CSV</button><button class='csv' id='help-btn' type='button'>说明</button></header><div id='demo-banner' class='demo'>演示数据，不是你的订阅。跑 <code>node-audit audit --mode isolated --yes</code> 之后打开 <code>node-audit-report/latest.html</code> 才是当前订阅的全量节点。</div><div class='body'><aside class='side'><div class='side-tools'><input id='q' type='search' placeholder='搜索节点' autocomplete='off'><div class='chips'><button class='on' data-f='all'>全部</button><button data-f='res'>家宽</button><button data-f='dc'>机房</button><button data-f='slow'>变慢</button><button data-f='rot'>换 IP</button><button data-f='fail'>失败</button><button data-f='hist'>历史</button></div></div><div id='list'></div><div class='hint'>j / k 切换节点 · ? 使用说明 · 「历史」= 上次订阅残留</div></aside><main class='main'><div class='kpis' id='kpis'></div><div id='detail'></div></main></div></div><div id='help' class='help-ov' role='dialog' aria-label='使用说明'><div class='help-card'><div class='help-top'><b>使用说明</b><button class='csv' id='help-close' type='button'>关闭</button></div><p class='guide-ver'>node-audit 0.10.0</p>
+</style></head><body><div id='na-app'><header class='top'><i class='mark'></i><span class='brand'>node-audit</span><span class='meta' id='meta'></span><button class='csv' id='csv' type='button'>导出 CSV</button><button class='csv' id='help-btn' type='button'>说明</button></header><div id='demo-banner' class='demo'>演示数据，不是你的订阅。跑 <code>node-audit audit --mode isolated --yes</code> 之后打开 <code>node-audit-report/latest.html</code> 才是当前订阅的全量节点。</div><div class='body'><aside class='side'><div class='side-tools'><input id='q' type='search' placeholder='搜索节点' autocomplete='off'><div class='chips'><button class='on' data-f='all'>全部</button><button data-f='res'>家宽</button><button data-f='dc'>机房</button><button data-f='slow'>变慢</button><button data-f='rot'>换 IP</button><button data-f='fail'>失败</button><button data-f='hist'>历史</button></div></div><div id='list'></div><div class='hint'>j / k 切换节点 · ? 使用说明 · 「历史」= 上次订阅残留</div></aside><main class='main'><div class='kpis' id='kpis'></div><div id='detail'></div></main></div></div><div id='help' class='help-ov' role='dialog' aria-label='使用说明'><div class='help-card'><div class='help-top'><b>使用说明</b><button class='csv' id='help-close' type='button'>关闭</button></div><p class='guide-ver'>node-audit 0.11.0</p>
 <h2 id='g1'>这是什么</h2>
 <p>node-audit 会把你订阅里的<strong>每一个真实节点</strong>测一遍：出口 IP（含 IPv6）、是不是机房、PTR/ASN、延迟、速度、风控，以及 GPT / Netflix / TikTok 能不能用。</p>
 <p>默认用 <strong>isolated</strong>：在本机另起一个临时内核，<strong>不会切换你正在上网的代理</strong>。浏览器、下载、游戏都不受影响。</p>
@@ -235,6 +235,10 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
 <dd>ini 里 <code>include</code> 只测一部分，或 <code>skip_speed = true</code>，或 <code>limit = 5</code> 先试 5 个。</dd>
 <dt>换了机场，趋势乱了</dt>
 <dd>节点名重叠不到 90% 会自动开一条新时间轴。换回旧机场还能对上原来那条。旧节点在控制台点「历史」。</dd>
+<dt>exe 放在「下载」文件夹行不行？</dt>
+<dd>可以。路径不是问题。很多节点「失败」通常是节点本身连不上，或 ip-api 免费接口被该出口限流（每分钟约 45 次）。0.11 起会再用 ipify / IPPure 兜底。</dd>
+<dt>为什么 ping0 没出结果？</dt>
+<dd>两件事：① <code>deep = auto</code> 时<strong>机房节点默认不跑网页深检</strong>（hosting=true 已经够判机房）。② ping0.cc / scamalytics 网页经常反爬，扒首页会空。0.11 起改查 <code>ping0.cc/ip/地址</code>，并加上 <strong>IPPure JSON</strong>（无验证码，有风险分/是否住宅）和 iplark JSON。不会加 ipjiance.com——要写验证码，自动化跑不了。</dd>
 <dt>本机没有 IPv6</dt>
 <dd>没关系。探测走节点的 HTTP 代理，不要求你电脑有 IPv6。</dd>
 <dt>会不会把我的账号搞风控？</dt>

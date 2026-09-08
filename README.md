@@ -110,7 +110,7 @@ isolated 下浏览器流量不动。不要用 attach 还挂着已登录的网页
 | 快筛 | 出口 v6 | api64.ipify.org + ipwho.is |
 | 快筛 | PTR、RDAP 注册档案 | DoH / rdap.org |
 | 快筛 | 延迟、测速、地区是否对得上 | gstatic / Cloudflare |
-| 深检 | 家宽/IDC、原生、风控 | ping0、Scamalytics（网页，失败会标不可用） |
+| 深检 | 家宽/IDC、原生、风控 | **IPPure JSON**（优先）+ ping0.cc/ip/{地址} + iplark JSON；Scamalytics 网页备选。机房默认跳过网页深检。不加 ipjiance（要验证码） |
 | 可选 | 欺诈分 / 滥用举报 | IPQS、AbuseIPDB（要免费 key，没有也能跑） |
 | 探针 | GPT / Netflix / TikTok | 匿名 GET，不带 Cookie |
 

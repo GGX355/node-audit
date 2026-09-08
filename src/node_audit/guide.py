@@ -121,6 +121,10 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
 <dd>ini 里 <code>include</code> 只测一部分，或 <code>skip_speed = true</code>，或 <code>limit = 5</code> 先试 5 个。</dd>
 <dt>换了机场，趋势乱了</dt>
 <dd>节点名重叠不到 90% 会自动开一条新时间轴。换回旧机场还能对上原来那条。旧节点在控制台点「历史」。</dd>
+<dt>exe 放在「下载」文件夹行不行？</dt>
+<dd>可以。路径不是问题。很多节点「失败」通常是节点本身连不上，或 ip-api 免费接口被该出口限流（每分钟约 45 次）。0.11 起会再用 ipify / IPPure 兜底。</dd>
+<dt>为什么 ping0 没出结果？</dt>
+<dd>两件事：① <code>deep = auto</code> 时<strong>机房节点默认不跑网页深检</strong>（hosting=true 已经够判机房）。② ping0.cc / scamalytics 网页经常反爬，扒首页会空。0.11 起改查 <code>ping0.cc/ip/地址</code>，并加上 <strong>IPPure JSON</strong>（无验证码，有风险分/是否住宅）和 iplark JSON。不会加 ipjiance.com——要写验证码，自动化跑不了。</dd>
 <dt>本机没有 IPv6</dt>
 <dd>没关系。探测走节点的 HTTP 代理，不要求你电脑有 IPv6。</dd>
 <dt>会不会把我的账号搞风控？</dt>
