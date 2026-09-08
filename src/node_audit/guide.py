@@ -84,6 +84,7 @@ _SECTIONS: list[tuple[str, str]] = [
 <tr><td><code>include</code></td><td>空=全量</td><td>只测名称匹配的节点，正则。例如 <code>台湾|香港原生</code>。</td></tr>
 <tr><td><code>exclude</code></td><td>空</td><td>排除匹配的名称。</td></tr>
 <tr><td><code>limit</code></td><td>空</td><td>最多测前 N 个，试跑用。</td></tr>
+<tr><td><code>workers</code></td><td>3</td><td>isolated 同时测几个节点（1–8）。测速会并行；ip-api 仍然排队。attach 无效。</td></tr>
 <tr><td><code>speed_bytes</code></td><td>10MB</td><td>测速下载量。名称含「勿跑大流量」的节点会自动降到 2MB。</td></tr>
 <tr><td><code>skip_speed</code></td><td>false</td><td>true = 不测速，会快很多。</td></tr>
 <tr><td><code>deep</code></td><td>auto</td><td>auto=只对住宅做网页深检；off=不做；all=每个都做（慢）。</td></tr>

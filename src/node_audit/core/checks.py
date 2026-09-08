@@ -8,6 +8,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -63,16 +64,27 @@ def ptr_qname(ip: str | None) -> str | None:
         return None
 
 
+# 免费 ip-api 约 45 次/分钟。并行审计时必须排队，否则会批量失败。
+_ipapi_lock = threading.Lock()
+_ipapi_next = 0.0
+_IPAPI_GAP = 1.4
+
+
 def _ipapi_identity(proxy: str, timeout: float) -> dict | None:
+    global _ipapi_next
     fields = "query,country,countryCode,city,isp,org,as,asname,proxy,hosting,mobile"
-    try:
-        status, data = http_get(f"http://ip-api.com/json/?fields={fields}", proxy, timeout)
-        if status != 200:
+    with _ipapi_lock:
+        wait = _ipapi_next - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            status, data = http_get(f"http://ip-api.com/json/?fields={fields}", proxy, timeout)
+            d = json.loads(data.decode()) if status == 200 else None
+            return d if d and d.get("query") else None
+        except Exception:
             return None
-        d = json.loads(data.decode())
-        return d if d.get("query") else None
-    except Exception:
-        return None
+        finally:
+            _ipapi_next = time.monotonic() + _IPAPI_GAP
 
 
 def _ipify4(proxy: str, timeout: float) -> str | None:

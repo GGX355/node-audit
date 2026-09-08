@@ -18,11 +18,12 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
 from .filters import is_real_node
-from .runner import _audit_one
+from .runner import _audit_one, run_jobs_ordered
 
 
 def core_binary_candidates() -> list[Path]:
@@ -349,17 +350,43 @@ def run_isolated(targets: list, opts, core_bin: str, log=print) -> list:
         ctrl_secret = secrets.token_hex(8)
         cfg = build_config(block, names, node_ports, ctrl_port, ctrl_secret)
 
+        workers = max(1, min(8, int(getattr(opts, "workers", 3) or 1)))
         log(f"[isolated] 内核: {core_bin} | 节点端口 {node_ports[0]}-{node_ports[-1]} | 独立实例，不影响当前代理")
+        if workers > 1:
+            log(f"[isolated] 并行 {workers} 路（ip-api 仍排队，避免免费额度被打爆）")
         with IsolatedCore(core_bin, cfg, node_ports, ctrl_port, ctrl_secret, log,
                           holders=holders) as core:
-            opts.delay_fn = make_delay_fn(core.api)
+            raw_delay = make_delay_fn(core.api)
+            delay_lock = threading.Lock()
+
+            def delay_fn(name: str) -> dict:
+                with delay_lock:
+                    return raw_delay(name)
+
+            opts.delay_fn = delay_fn
             port_map = dict(zip(names, node_ports))
             total = len(targets)
-            for idx, (name, ptype) in enumerate(targets, 1):
-                log(f"[{idx}/{total}] {name}")
-                results.append(
-                    _audit_one(name, ptype, f"http://127.0.0.1:{port_map[name]}", opts, log)
-                )
+            log_lock = threading.Lock()
+            done = [0]
+
+            def _job(name, ptype, url):
+                def fn():
+                    buf: list[str] = []
+
+                    def clog(m=""):
+                        buf.append("" if m is None else str(m))
+
+                    rep = _audit_one(name, ptype, url, opts, log=clog)
+                    with log_lock:
+                        done[0] += 1
+                        log(f"[{done[0]}/{total}] {name}")
+                        for line in buf:
+                            log(line)
+                    return rep
+                return name, fn
+
+            jobs = [_job(n, t, f"http://127.0.0.1:{port_map[n]}") for n, t in targets]
+            results = run_jobs_ordered(jobs, workers, log)
     except KeyboardInterrupt:
         log(f"[isolated] 已中断：返回已完成 {len(results)}/{len(targets)} 个节点的部分报告")
         return results

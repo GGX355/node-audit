@@ -18,6 +18,9 @@ exclude =
 # 最多测前 N 个。留空 = 不限制。
 limit =
 
+# isolated 同时测几个节点（1–8）。默认 3。不要太大：ip-api 免费额度约 45 次/分。
+workers = 3
+
 # 测速下载量。名称含「勿跑大流量」的节点会自动降到 2MB。
 speed_bytes = 10MB
 speed_max_seconds = 60
@@ -46,6 +49,7 @@ class Settings:
     include: str | None = None
     exclude: str | None = None
     limit: int | None = None
+    workers: int = 3
     speed_bytes: str = "10MB"
     speed_max_seconds: int = 60
     skip_speed: bool = False
@@ -96,6 +100,9 @@ def load_settings(path: Path | None) -> Settings:
     lim = _blank(a.get("limit") if hasattr(a, "get") else None)
     if lim and lim.isdigit():
         s.limit = int(lim)
+    w = _blank(a.get("workers") if hasattr(a, "get") else None)
+    if w and w.isdigit():
+        s.workers = max(1, min(8, int(w)))
     speed = _blank(a.get("speed_bytes") if hasattr(a, "get") else None)
     if speed:
         s.speed_bytes = speed

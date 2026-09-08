@@ -47,6 +47,7 @@ def test_load_settings_overrides():
             "include = 台湾\n"
             "limit = 3\n"
             "skip_speed = true\n"
+            "workers = 5\n"
             "deep = off\n"
             "services = none\n"
             "[output]\n"
@@ -59,6 +60,7 @@ def test_load_settings_overrides():
         assert s.include == "台湾"
         assert s.limit == 3
         assert s.skip_speed is True
+        assert s.workers == 5
         assert s.deep == "off"
         assert s.services == "none"
         assert s.out == "reports-out"

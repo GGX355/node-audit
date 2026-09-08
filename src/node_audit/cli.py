@@ -67,6 +67,7 @@ class Opts:
         self.ipqs_key = args.ipqs_key
         self.abuseipdb_key = args.abuseipdb_key
         self.port_base = args.port_base
+        self.workers = max(1, min(8, int(getattr(args, "workers", 3) or 1)))
         self.runtime_cfg_text: str | None = None
         self.delay_fn = None  # 延迟测量函数（attach/isolated 各自注入）
 
@@ -388,6 +389,7 @@ def _audit_ns_from_settings(settings) -> argparse.Namespace:
         ipqs_key=settings.ipqs_key or os.environ.get("NODE_AUDIT_IPQS_KEY"),
         abuseipdb_key=settings.abuseipdb_key or os.environ.get("NODE_AUDIT_ABUSEIPDB_KEY"),
         port_base=41000,
+        workers=getattr(settings, "workers", 3),
         core=None,
         out=settings.out or str(default_out_dir()),
         db=None,
@@ -573,6 +575,8 @@ def main(argv=None) -> int:
                        help="IPQualityScore API key（或环境变量 NODE_AUDIT_IPQS_KEY）")
     p_aud.add_argument("--abuseipdb-key", default=os.environ.get("NODE_AUDIT_ABUSEIPDB_KEY"),
                        help="AbuseIPDB API key（或环境变量 NODE_AUDIT_ABUSEIPDB_KEY）")
+    p_aud.add_argument("--workers", type=int, default=3,
+                       help="isolated 同时测几个节点（默认 3，最大 8；attach 忽略）")
     p_aud.add_argument("--port-base", type=int, default=41000,
                        help="isolated 模式的独立端口起始值（默认 41000）")
     p_aud.add_argument("--core", default=None, help="isolated 模式的 mihomo 内核路径（默认自动查找）")

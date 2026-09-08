@@ -66,6 +66,7 @@ Clash / mihomo **节点质量审计**：双击一个 exe，把订阅里每个节
 mode = isolated          # 不要改成 attach（会切换你正在用的代理）
 include = 台湾|香港原生    # 只测名称匹配的；留空 = 全量
 limit =                  # 试跑可写成 5
+workers = 3              # isolated 同时测几个节点（1–8）
 skip_speed = false       # true 会快很多
 deep = auto              # auto / off / all
 ```

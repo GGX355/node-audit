@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import atexit
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .checks import (LATENCY_PROBE_TARGETS, check_abuseipdb, check_identity,
                      check_iplark, check_ippure, check_ipqs, check_ping0,
@@ -17,6 +18,30 @@ from .checks import (LATENCY_PROBE_TARGETS, check_abuseipdb, check_identity,
                      speed_test)
 from .filters import heavy_traffic, rate_multiplier, region_from_name
 from .models import DeepCheck, NodeReport, build_verdict
+
+
+def run_jobs_ordered(jobs, workers: int, log=print) -> list:
+    """跑 [(label, fn), ...]，结果按原顺序。fn() 自己打日志。
+
+    workers<=1 或只有 1 个任务时串行。中断时返回已完成的（去掉空洞）。
+    """
+    jobs = list(jobs)
+    n = len(jobs)
+    workers = max(1, min(8, int(workers or 1)))
+    if n == 0:
+        return []
+    if workers <= 1 or n == 1:
+        return [fn() for _, fn in jobs]
+    slots: list = [None] * n
+    try:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            fmap = {pool.submit(fn): i for i, (_, fn) in enumerate(jobs)}
+            for fut in as_completed(fmap):
+                slots[fmap[fut]] = fut.result()
+    except KeyboardInterrupt:
+        log(f"[并行] 已中断：已完成 {sum(1 for r in slots if r is not None)}/{n}")
+        return [r for r in slots if r is not None]
+    return slots
 
 
 def make_delay_fn(api, timeout_ms: int = 5000):
