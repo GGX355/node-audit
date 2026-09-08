@@ -13,10 +13,12 @@ import argparse
 import os
 import re
 import sys
+import webbrowser
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+from . import __version__
 from .clash.api import ClashAPI
 from .clash.discover import discover
 from .clash.transport import PipeTransport, TcpTransport
@@ -80,6 +82,83 @@ def build_transport(disc, args):
     if disc.transport == "pipe":
         return PipeTransport(disc.pipe_name, secret)
     return TcpTransport(disc.host, disc.port, secret)
+
+
+class Tee:
+    """同时写控制台和日志文件。"""
+
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for s in self.streams:
+            try:
+                s.write(data)
+                s.flush()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def flush(self):
+        for s in self.streams:
+            try:
+                s.flush()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def isatty(self):
+        return any(getattr(s, "isatty", lambda: False)() for s in self.streams)
+
+    @property
+    def encoding(self):
+        for s in self.streams:
+            enc = getattr(s, "encoding", None)
+            if enc:
+                return enc
+        return "utf-8"
+
+    def reconfigure(self, **kwargs):
+        for s in self.streams:
+            fn = getattr(s, "reconfigure", None)
+            if fn:
+                try:
+                    fn(**kwargs)
+                except Exception:  # noqa: BLE001
+                    pass
+
+
+def normalize_argv(argv: list[str] | None) -> list[str]:
+    """无参数（双击 exe / 直接 python -m node_audit）→ run。"""
+    if argv is None:
+        argv = sys.argv[1:]
+    argv = list(argv)
+    if not argv:
+        return ["run"]
+    return argv
+
+
+def _interactive() -> bool:
+    try:
+        return bool(sys.stdin) and sys.stdin.isatty()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _pause_if_window() -> None:
+    """双击 exe 时窗口会一闪而过，停一下让人看完。"""
+    from .paths import is_frozen
+    if not is_frozen() or not _interactive():
+        return
+    try:
+        input("\n按 Enter 关闭窗口...")
+    except EOFError:
+        pass
+
+
+def _open_html(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    webbrowser.open(path.resolve().as_uri())
+    return True
 
 
 def _add_common(p: argparse.ArgumentParser) -> None:
@@ -272,7 +351,7 @@ def _emit(reports, disc, args) -> None:
     for r in reports:
         rows.append([
             r.name, r.region_cn or "-",
-            r.exit_ip or "-",
+            r.exit_label(),
             f"{r.country_code or '-'} {r.city or ''}".strip(),
             (r.isp or "-")[:24],
             "机房" if r.hosting is True else ("住宅" if r.hosting is False else "-"),
@@ -293,6 +372,141 @@ def _emit(reports, disc, args) -> None:
         print(f"历史: {Path(args.db) if args.db else outdir / 'history.db'}")
 
 
+def _audit_ns_from_settings(settings) -> argparse.Namespace:
+    from .paths import default_out_dir
+    return argparse.Namespace(
+        api=None, pipe=None, secret=None, mixed_port=None,
+        mode=settings.mode,
+        include=settings.include,
+        exclude=settings.exclude,
+        limit=settings.limit,
+        speed_bytes=_parse_size(settings.speed_bytes),
+        speed_max_seconds=settings.speed_max_seconds,
+        skip_speed=settings.skip_speed,
+        deep=settings.deep,
+        services=_parse_services(settings.services),
+        ipqs_key=settings.ipqs_key or os.environ.get("NODE_AUDIT_IPQS_KEY"),
+        abuseipdb_key=settings.abuseipdb_key or os.environ.get("NODE_AUDIT_ABUSEIPDB_KEY"),
+        port_base=41000,
+        core=None,
+        out=settings.out or str(default_out_dir()),
+        db=None,
+        trend_runs=30,
+        no_history=False,
+        dry_run=False,
+        yes=True,
+    )
+
+
+def _print_banner(ini: Path, outdir: Path, log_path: Path, created_ini: bool) -> None:
+    from .paths import app_dir
+    from .core.isolated import find_core_binary
+    from .clash.discover import discover as _discover
+
+    print(f"======== node-audit {__version__} ========")
+    print("一键审计 · isolated 零干扰（不切换你正在用的代理）")
+    print(f"程序目录: {app_dir()}")
+    print(f"设置文件: {ini}" + ("  （已新写，下次可改）" if created_ini else ""))
+    print(f"报告目录: {outdir}")
+    print(f"本次日志: {log_path}")
+    disc = _discover()
+    core = find_core_binary()
+    print(f"Clash:    {disc.describe()}")
+    print(f"内核:     {core or '未找到 verge-mihomo / mihomo'}")
+    print()
+
+
+def _menu(has_report: bool) -> str:
+    print("请选择：")
+    print("  1) 开始全量审计（推荐，约十几～二十分钟）")
+    print("  2) 打开上次报告" + ("" if has_report else "  ← 还没有，需要先跑过 1"))
+    print("  3) 只列出将测的节点，不真正测")
+    print("  Q) 退出")
+    try:
+        raw = input("选择 [1]: ").strip().lower()
+    except EOFError:
+        return "1"
+    if raw in ("", "1"):
+        return "1"
+    if raw in ("2", "3", "q"):
+        return raw
+    print(f"不认识「{raw}」，按 1 开始审计。")
+    return "1"
+
+
+def cmd_run(args) -> int:
+    """双击 / 无参数入口：菜单 + 读 ini + 打日志 + 跑完打开报告。"""
+    from .paths import default_ini_path, default_out_dir
+    from .settings import load_settings, write_template_if_missing
+
+    ini = Path(args.ini) if getattr(args, "ini", None) else default_ini_path()
+    created = write_template_if_missing(ini)
+    settings = load_settings(ini)
+    if getattr(args, "no_open", False):
+        settings.open_report = False
+
+    ns = _audit_ns_from_settings(settings)
+    outdir = Path(ns.out)
+    outdir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    log_path = outdir / f"audit-{stamp}.log"
+    latest_log = outdir / "latest.log"
+    latest_html = outdir / "latest.html"
+
+    skip_menu = bool(getattr(args, "yes", False)) or not _interactive()
+    orig_out, orig_err = sys.stdout, sys.stderr
+    logf = log_path.open("w", encoding="utf-8")
+    sys.stdout = Tee(orig_out, logf)
+    sys.stderr = Tee(orig_err, logf)
+    rc = 1
+    try:
+        if not skip_menu:
+            _print_banner(ini, outdir, log_path, created)
+            choice = _menu(latest_html.is_file())
+            if choice == "q":
+                print("已退出。")
+                return 0
+            if choice == "2":
+                if _open_html(latest_html):
+                    print(f"已打开 {latest_html}")
+                    return 0
+                print("还没有 latest.html。请先选 1 跑一次审计。")
+                return 1
+            if choice == "3":
+                ns.dry_run = True
+        else:
+            _print_banner(ini, outdir, log_path, created)
+            print("非交互 / --yes：直接开始全量审计。")
+            print()
+
+        print(f"日志同时写入 {log_path}")
+        if ns.dry_run:
+            print("模式: 只列表（dry-run）")
+        else:
+            print("开始全量审计。窗口请开着，中途可 Ctrl+C 保留已测部分。")
+        print()
+        rc = cmd_audit(ns)
+        if rc == 0 and not ns.dry_run and settings.open_report:
+            if _open_html(latest_html):
+                print(f"已打开报告 {latest_html}")
+            else:
+                print(f"审计结束。请打开 {latest_html}")
+        print(f"完整日志: {log_path}")
+        return rc
+    finally:
+        sys.stdout = orig_out
+        sys.stderr = orig_err
+        try:
+            logf.flush()
+            logf.close()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            latest_log.write_bytes(log_path.read_bytes())
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def main(argv=None) -> int:
     if sys.platform == "win32":
         for stream in (sys.stdout, sys.stderr):
@@ -301,11 +515,17 @@ def main(argv=None) -> int:
             except Exception:  # noqa: BLE001
                 pass
 
+    argv = normalize_argv(argv)
+    one_click = argv == ["run"] or (argv[:1] == ["run"] and not any(
+        a in ("-h", "--help") for a in argv
+    ))
+
     parser = argparse.ArgumentParser(
-        prog="node-audit", description="Clash/mihomo 节点质量审计：IP 身份·纯净度·延迟·测速"
+        prog="node-audit", description="Clash/mihomo 节点质量审计：IP 身份·纯净度·延迟·测速。"
+        "无参数 = 一键 run（双击 exe 也会进这里）。"
     )
-    parser.add_argument("--version", action="version", version="node-audit 0.6.0")
-    sub = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument("--version", action="version", version=f"node-audit {__version__}")
+    sub = parser.add_subparsers(dest="command")
 
     p_disc = sub.add_parser("discover", help="探测控制器并列出节点（只读，不做任何切换）")
     _add_common(p_disc)
@@ -347,6 +567,13 @@ def main(argv=None) -> int:
     p_aud.add_argument("--yes", "-y", action="store_true", help="跳过切换前的确认提示")
     p_aud.set_defaults(func=cmd_audit)
 
+    p_run = sub.add_parser("run", help="一键审计：读 node-audit.ini，写日志，跑完打开报告（双击 exe 默认进这里）")
+    p_run.add_argument("--ini", default=None, help="设置文件路径（默认程序目录/当前目录的 node-audit.ini）")
+    p_run.add_argument("--no-open", action="store_true", help="结束后不要自动打开 latest.html")
+    p_run.add_argument("--yes", "-y", action="store_true",
+                       help="跳过菜单，直接全量审计（计划任务用）")
+    p_run.set_defaults(func=cmd_run)
+
     p_srv = sub.add_parser("serve", help="在本机打开控制台页面（只监听 127.0.0.1）")
     p_srv.add_argument("--out", default="node-audit-report", help="报告目录（默认 ./node-audit-report）")
     p_srv.add_argument("--db", default=None, help="history.db 路径（默认 <out>/history.db）")
@@ -356,11 +583,18 @@ def main(argv=None) -> int:
     p_srv.set_defaults(func=cmd_serve)
 
     args = parser.parse_args(argv)
+    if not getattr(args, "func", None):
+        args = parser.parse_args(["run"])
+        one_click = True
     try:
-        return args.func(args)
+        rc = args.func(args)
+        return rc
     except KeyboardInterrupt:
-        print("\n已中断。")
+        print("\n已中断。已测完的部分报告仍会保留。")
         return 130
     except Exception as e:  # noqa: BLE001
         print(f"错误: {type(e).__name__}: {e}", file=sys.stderr)
         return 1
+    finally:
+        if one_click:
+            _pause_if_window()

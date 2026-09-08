@@ -7,10 +7,12 @@ from node_audit.core.models import DeepCheck, NodeReport
 from node_audit.report.dashboard import demo_payload, render_dashboard, write_dashboard
 
 
-def _rep(name, rtt=50, speed=10.0, hosting=False, run_ip="36.227.213.17", risk=None, error=None):
+def _rep(name, rtt=50, speed=10.0, hosting=False, run_ip="36.227.213.17",
+         run_ip6=None, risk=None, error=None):
     r = NodeReport(name=name, node_type="AnyTLS")
     r.region_code, r.region_cn = "TW", "台湾"
     r.exit_ip = run_ip
+    r.exit_ip6 = run_ip6
     r.country_code, r.country, r.city = "TW", "Taiwan", "Taipei"
     r.isp, r.asn = "Chunghwa Telecom", "AS3462"
     r.hosting = hosting
@@ -43,11 +45,13 @@ def test_load_dashboard_kpis_and_series():
     with tempfile.TemporaryDirectory() as td:
         db = os.path.join(td, "history.db")
         save_run(
-            [_rep("家宽轮换", rtt=40, speed=50.0, run_ip="36.1.1.1", risk=7),
+            [_rep("家宽轮换", rtt=40, speed=50.0, run_ip="36.1.1.1",
+                  run_ip6="2001:db8::1", risk=7),
              _rep("机房稳定", rtt=80, speed=90.0, hosting=True, run_ip="52.1.1.1")],
             _meta("run1", "2026-01-01T00:00:00"), db)
         save_run(
-            [_rep("家宽轮换", rtt=90, speed=20.0, run_ip="36.2.2.2", risk=18),
+            [_rep("家宽轮换", rtt=90, speed=20.0, run_ip="36.2.2.2",
+                  run_ip6="2001:db8::2", risk=18),
              _rep("机房稳定", rtt=81, speed=91.0, hosting=True, run_ip="52.1.1.1")],
             _meta("run2", "2026-01-02T00:00:00"), db)
         payload = load_dashboard(db)
@@ -63,8 +67,10 @@ def test_load_dashboard_kpis_and_series():
         assert home["degraded"] is True
         assert home["ip_rotated"] is True
         assert home["series"]["ip"] == ["36.1.1.1", "36.2.2.2"]
+        assert home["series"]["ip6"] == ["2001:db8::1", "2001:db8::2"]
         assert home["series"]["risk"] == [7, 18]
         assert home["latest"]["exit_ip"] == "36.2.2.2"
+        assert home["latest"]["exit_ip6"] == "2001:db8::2"
         assert payload["nodes"][0]["degraded"] is True  # 变慢置顶
         assert home["in_latest"] is True
 
@@ -92,6 +98,8 @@ def test_dashboard_html_landmarks_and_xss():
     assert "id='na-data'" in html
     assert "demo-banner" in html
     assert "function spark" in html
+    assert "出口 v4" in html and "出口 v6" in html
+    assert "series.ip6" in html
     assert "<script>alert(1)</script>" not in html
     assert "\\u003cscript\\u003e" in html
     raw = html.split("id='na-data'>")[1].split("</script>")[0]

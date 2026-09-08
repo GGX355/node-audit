@@ -6,3 +6,5 @@ build/
 *.egg-info/
 reports/
 node-audit-report/
+/node-audit.ini
+*.spec

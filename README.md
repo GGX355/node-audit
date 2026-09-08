@@ -13,18 +13,32 @@ Clash / mihomo 节点质量审计工具：对订阅里的**每一个节点**自�
 
 两种模式共用同一条检查管线与判定逻辑，报告格式完全一致。
 
-## 安装与运行
+## Windows：下载双击（推荐）
+
+1. 本机先装着 Clash Verge / Verge Rev，并**成功打开过一次**（磁盘上要有 `clash-verge.yaml`）。
+2. 到 [Releases](https://github.com/GGX355/node-audit/releases) 下载 `node-audit.exe`，放到任意文件夹。
+3. **双击**。第一次会在旁边生成 `node-audit.ini`（默认就能跑，想改再打开记事本编）。
+4. 菜单选 **1** 开始全量审计（isolated，不影响你正在用的代理，大约十几～二十分钟）。不要关窗口。
+5. 跑完自动打开 `node-audit-report\latest.html`。完整过程在 `node-audit-report\latest.log`。
+
+选 **2** 只看上次报告；选 **3** 只列表不测。想改「只测台湾」等，编辑 `node-audit.ini` 里的 `include`。
+
+计划任务无人值守：`node-audit.exe run --yes`（无菜单，直接测）。
+
+## 源码运行
 
 零第三方依赖，Python ≥ 3.9：
 
 ```bash
-# 直接运行（仓库根目录）
-PYTHONPATH=src python -m node_audit discover
+# 仓库根目录；无参数 = 和双击 exe 一样的一键菜单
+PYTHONPATH=src python -m node_audit
 
-# 或安装为命令行工具
+PYTHONPATH=src python -m node_audit discover
 pip install .
 node-audit discover
 ```
+
+自己打包 exe：`powershell -ExecutionPolicy Bypass -File scripts\build-exe.ps1`，产物在 `dist\node-audit.exe`。
 
 ## 使用示例
 
@@ -47,6 +61,10 @@ node-audit audit --mode isolated --include "台湾|香港原生" --yes
 # 全节点深检 + 官方风控 API（key 可用环境变量 NODE_AUDIT_IPQS_KEY / NODE_AUDIT_ABUSEIPDB_KEY）
 node-audit audit --mode isolated --yes --deep all \
   --ipqs-key XXXX --abuseipdb-key XXXX
+
+# 一键（菜单 / 读 ini / 写日志 / 打开报告）
+node-audit run
+node-audit run --yes          # 跳过菜单，给计划任务用
 
 # 无人值守：不连正在跑的控制器，报告固定入口 latest.html
 node-audit audit --mode isolated --yes
@@ -80,7 +98,8 @@ node-audit serve --open
 
 | 阶段 | 检查项 | 数据源 |
 |---|---|---|
-| 快筛 | 出口 IP / 国家 / ISP / ASN / hosting / proxy 标记 | ip-api.com |
+| 快筛 | 出口 IP / 国家 / ISP / ASN / hosting / proxy 标记 | ip-api.com（v4） |
+| 快筛 | IPv6 出口（有则 PTR `ip6.arpa` + 身份） | api64.ipify.org + ipwho.is |
 | 快筛 | PTR 反向解析（家宽型 vs 机房型） | Cloudflare / Google DoH |
 | 快筛 | 注册组织 / 注册日期（自动路由正确 RIR） | rdap.org → ARIN/APNIC/RIPE… |
 | 快筛 | 多目标延迟 + **延迟-地区一致性**（RTT 超出地区合理上限 → 落地存疑） | gstatic / cloudflare 204 探针 |
@@ -163,7 +182,7 @@ python tests/run_all.py   # 零依赖
 
 ## 已知限制
 
-- 出口 IP 审计覆盖 IPv4（ip-api 免费端点仅 v4）；标 IPv6 的节点实际也多以 v4 出口被检测，v6-only 出口列入路线图；
+- 请求一律走节点 HTTP 代理（`127.0.0.1`），本机有没有 IPv6 不影响 v6 出口探测；
 - Scamalytics / ping0 为网页解析（best-effort），反爬策略变化时自动标记“不可用”而不阻塞整体；
 - 延迟合理性阈值按“用户在中国大陆”校准，其他出发地请调整 `core/filters.py` 中的 `RTT_MAX_MS`；
 - isolated 模式要求订阅以内联 `proxies:` 形式存在于 Verge 运行时配置（Clash Verge / Verge Rev 默认如此）；走 `proxy-providers` 的配置请用 attach 模式。
@@ -176,8 +195,11 @@ python tests/run_all.py   # 零依赖
 - [x] v0.4 自包含 HTML 报告 + SQLite 历史趋势（家宽 IP 轮换、RTT/速度/判定跨次对比）
 - [x] v0.5 日更仪表盘：`latest.html`、趋势语义（换 IP / 风控漂 / 变慢置顶）、schema 迁移、无人值守 isolated、计划任务示例；IPQS 直连；端口占住到内核启动；发现路径兼容非 Rev
 - [x] v0.6 控制台页面：侧栏 + KPI + SVG 折线时间轴；`node-audit serve`；`latest.html` 改为软件壳；订阅 90% 重叠隔离
-- [ ] v0.7 IPv6 出口审计（见 [`docs/PLAN-v0.7-ipv6.md`](docs/PLAN-v0.7-ipv6.md)；原「v1.0」已拆开，Go 重写不做）
-- [ ] 可选：PyInstaller 单文件 exe；控制台 sparkline 日期刻度
+- [x] v0.7 IPv6 出口审计：双栈探测、`ip6.arpa` PTR、schema v3 `exit_ip6`；仅 v6 不再因 ip-api 失败判死（见 [`docs/PLAN-v0.7-ipv6.md`](docs/PLAN-v0.7-ipv6.md)）
+- [x] v0.8 一键程序：双击 `node-audit.exe`、`node-audit.ini`、日志、跑完打开报告；GitHub Releases 提供 exe（见 [`docs/PLAN-v0.8-app.md`](docs/PLAN-v0.8-app.md)）
+- [ ] 可选：控制台 sparkline 日期刻度
+
+原 README 把 v1.0 写成「SVG 趋势图 + IPv6 + Go 单二进制」三件事。SVG 已在 v0.6 控制台里；Go 重写**不做**（要 exe 用 PyInstaller）。
 
 换电脑接着做：[`docs/HANDOFF.md`](docs/HANDOFF.md)。
 

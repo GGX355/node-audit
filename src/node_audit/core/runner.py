@@ -66,10 +66,11 @@ def _check_node(rep: NodeReport, proxy: str, opts, log=print) -> None:
             break
         time.sleep(1.0)
     if not identity:
-        rep.error = "无法通过该节点获取出口 IP（节点不可用或 ip-api 不可达）"
+        rep.error = "无法通过该节点获取出口 IP（v4 ip-api 与 v6 ipify 均失败）"
         log(f"    错误  {rep.error}")
         return
     rep.exit_ip = identity.get("query")
+    rep.exit_ip6 = identity.get("query6")
     rep.country = identity.get("country")
     rep.country_code = identity.get("countryCode")
     rep.city = identity.get("city")
@@ -79,12 +80,28 @@ def _check_node(rep: NodeReport, proxy: str, opts, log=print) -> None:
     rep.asname = identity.get("asname")
     rep.hosting = identity.get("hosting")
     rep.proxy_flag = identity.get("proxy")
-    log(f"    出口  {rep.exit_ip} {rep.country}/{rep.city} | {rep.isp} | {rep.asn}")
+    log(f"    出口  {rep.exit_label()} {rep.country}/{rep.city} | {rep.isp} | {rep.asn}")
+    if rep.exit_ip and rep.exit_ip6:
+        if identity.get("identity_source") == "ipwho.is":
+            other, tag = identity.get("v4") or {}, "v4"
+            other_ip = rep.exit_ip
+        else:
+            other, tag = identity.get("v6") or {}, "v6"
+            other_ip = rep.exit_ip6
+        extra = [x for x in (
+            other.get("countryCode") or other.get("country"),
+            other.get("isp"),
+        ) if x]
+        suffix = f"（{' '.join(str(x) for x in extra)}）" if extra else ""
+        rep.notes.append(f"同时有 {tag} 出口 {other_ip}{suffix}")
 
-    rep.ptr = check_ptr(rep.exit_ip, proxy)
+    primary_ip = rep.exit_ip or rep.exit_ip6
+    rep.ptr = check_ptr(primary_ip, proxy)
+    if not rep.ptr and rep.exit_ip and rep.exit_ip6:
+        rep.ptr = check_ptr(rep.exit_ip6, proxy)
     log(f"    PTR   {rep.ptr or '无'}")
 
-    rd = check_rdap(rep.exit_ip, proxy)
+    rd = check_rdap(primary_ip, proxy)
     if rd:
         rep.rdap_org = rd.get("org")
         rep.rdap_name = rd.get("name")
@@ -136,12 +153,12 @@ def _check_node(rep: NodeReport, proxy: str, opts, log=print) -> None:
         return
 
     deep = DeepCheck()
-    deep.scamalytics = check_scamalytics(rep.exit_ip, proxy)
+    deep.scamalytics = check_scamalytics(primary_ip, proxy)
     deep.ping0 = check_ping0(proxy)
     if opts.ipqs_key:
-        deep.ipqs = check_ipqs(rep.exit_ip, opts.ipqs_key, proxy)
+        deep.ipqs = check_ipqs(primary_ip, opts.ipqs_key, proxy)
     if opts.abuseipdb_key:
-        deep.abuseipdb = check_abuseipdb(rep.exit_ip, opts.abuseipdb_key, proxy)
+        deep.abuseipdb = check_abuseipdb(primary_ip, opts.abuseipdb_key, proxy)
     rep.deep = deep
 
     p0 = deep.ping0 or {}

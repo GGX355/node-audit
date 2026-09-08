@@ -29,6 +29,7 @@ class NodeReport:
     heavy: bool = False
 
     exit_ip: str | None = None
+    exit_ip6: str | None = None
     country: str | None = None
     country_code: str | None = None
     city: str | None = None
@@ -63,6 +64,12 @@ class NodeReport:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    def exit_label(self) -> str:
+        v4, v6 = self.exit_ip, self.exit_ip6
+        if v4 and v6:
+            return f"{v4} / {v6}"
+        return v4 or v6 or "-"
 
 
 def build_verdict(rep: NodeReport) -> tuple[str, list[str]]:

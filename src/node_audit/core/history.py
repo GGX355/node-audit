@@ -18,13 +18,21 @@ import uuid
 from pathlib import Path
 
 # 每次改表结构 +1，并在 _MIGRATIONS 里追加对应步骤
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # 相对上次：速度下降 ≥ 此比例，或 RTT 翻倍 → 整行标红置顶
 SPEED_DROP_THRESHOLD = 0.4
 RTT_RISE_MULT = 2.0
 # 节点名重叠达到该比例视为同一订阅（换机场会低于此值）
 SAME_SUBSCRIPTION_THRESHOLD = 0.9
+
+
+def _addr_changed(cur, prev) -> bool:
+    """任一端有值且不相等即算换。两端都空不算。"""
+    a, b = cur or None, prev or None
+    if a is None and b is None:
+        return False
+    return a != b
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs(
@@ -40,6 +48,7 @@ CREATE TABLE IF NOT EXISTS results(
   node_name TEXT,
   node_type TEXT,
   exit_ip TEXT,
+  exit_ip6 TEXT,
   country_code TEXT,
   city TEXT,
   isp TEXT,
@@ -79,11 +88,16 @@ def _migrate_v2(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_v3(conn: sqlite3.Connection) -> None:
+    _add_column_if_missing(conn, "results", "exit_ip6", "TEXT")
+
+
 # version -> list of SQL statements (or callables taking conn).
 # v1 即当前建表结果；以后加列写 v2、v3…，用 _add_column_if_missing 以免旧库炸。
 _MIGRATIONS: dict[int, list] = {
     1: [],
     2: [_migrate_v2],
+    3: [_migrate_v3],
 }
 
 
@@ -114,9 +128,13 @@ def _migrate(conn: sqlite3.Connection) -> None:
 def connect(db_path) -> sqlite3.Connection:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
-    conn.executescript(_SCHEMA)
-    _migrate(conn)
-    return conn
+    try:
+        conn.executescript(_SCHEMA)
+        _migrate(conn)
+        return conn
+    except Exception:
+        conn.close()
+        raise
 
 
 def node_overlap(a, b) -> float:
@@ -214,14 +232,14 @@ def save_run(reports, meta: dict, db_path) -> dict:
                 sc = (r.deep.scamalytics if r.deep else None) or {}
                 conn.execute(
                     """INSERT INTO results(
-                       run_id, node_name, node_type, exit_ip, country_code, city,
+                       run_id, node_name, node_type, exit_ip, exit_ip6, country_code, city,
                        isp, asn, hosting, ptr, rdap_org,
                        rtt_min, rtt_gstatic, rtt_cloudflare,
                        speed_mbps, speed_partial, geo_match, rtt_suspect,
                        risk_pct, scam_score, verdict, notes, services, deep, error, created_at)
-                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
-                        meta["run_id"], r.name, r.node_type, r.exit_ip,
+                        meta["run_id"], r.name, r.node_type, r.exit_ip, r.exit_ip6,
                         r.country_code, r.city, r.isp, r.asn,
                         None if r.hosting is None else int(r.hosting),
                         r.ptr, r.rdap_org,
@@ -271,7 +289,7 @@ def load_trend(db_path, runs_limit: int = 30, subscription_id: str | None = None
     返回 (runs, rows)：
       runs = [run_id, ...] 按时间从旧到新；
       rows = [{"node": 节点名,
-               "cells": {run_id: {"rtt", "speed", "verdict", "exit_ip", "risk_pct"}}}]
+               "cells": {run_id: {"rtt", "speed", "verdict", "exit_ip", "exit_ip6", "risk_pct"}}}]
     比较语义（换 IP / Δ / 变慢置顶）由 enrich_trend 附加，不在这里算。
     """
     conn = connect(db_path)
@@ -284,15 +302,15 @@ def load_trend(db_path, runs_limit: int = 30, subscription_id: str | None = None
         marks = ",".join("?" * len(runs))
         rows_map: dict[str, dict] = {}
         for row in conn.execute(
-            f"""SELECT node_name, run_id, rtt_min, speed_mbps, verdict, exit_ip, risk_pct
+            f"""SELECT node_name, run_id, rtt_min, speed_mbps, verdict, exit_ip, exit_ip6, risk_pct
                 FROM results WHERE run_id IN ({marks})""",
             runs,
         ):
-            name, run_id, rtt, speed, verdict, exit_ip, risk_pct = row
+            name, run_id, rtt, speed, verdict, exit_ip, exit_ip6, risk_pct = row
             rows_map.setdefault(name, {"node": name, "cells": {}})
             rows_map[name]["cells"][run_id] = {
                 "rtt": rtt, "speed": speed, "verdict": verdict,
-                "exit_ip": exit_ip, "risk_pct": risk_pct,
+                "exit_ip": exit_ip, "exit_ip6": exit_ip6, "risk_pct": risk_pct,
             }
         rows = sorted(rows_map.values(), key=lambda x: x["node"])
         return runs, rows
@@ -319,14 +337,16 @@ def enrich_trend(runs: list, rows: list,
                 continue
             cell = dict(src)
             cell["ip_changed"] = False
+            cell["ip4_changed"] = False
+            cell["ip6_changed"] = False
             cell["risk_delta"] = None
             cell["rtt_delta"] = None
             cell["speed_delta"] = None
             cell["slow"] = False
             if prev:
-                cur_ip, prev_ip = cell.get("exit_ip"), prev.get("exit_ip")
-                if cur_ip and prev_ip and cur_ip != prev_ip:
-                    cell["ip_changed"] = True
+                cell["ip4_changed"] = _addr_changed(cell.get("exit_ip"), prev.get("exit_ip"))
+                cell["ip6_changed"] = _addr_changed(cell.get("exit_ip6"), prev.get("exit_ip6"))
+                cell["ip_changed"] = cell["ip4_changed"] or cell["ip6_changed"]
                 if cell.get("risk_pct") is not None and prev.get("risk_pct") is not None:
                     cell["risk_delta"] = cell["risk_pct"] - prev["risk_pct"]
                 if cell.get("rtt") is not None and prev.get("rtt") is not None:
@@ -407,7 +427,7 @@ def load_dashboard(db_path, runs_limit: int = 30) -> dict:
         }
         marks = ",".join("?" * len(run_ids))
         result_rows = conn.execute(
-            f"""SELECT node_name, run_id, rtt_min, speed_mbps, verdict, exit_ip,
+            f"""SELECT node_name, run_id, rtt_min, speed_mbps, verdict, exit_ip, exit_ip6,
                        risk_pct, country_code, city, isp, hosting, geo_match,
                        services, notes, error, node_type
                 FROM results WHERE run_id IN ({marks})""",
@@ -419,17 +439,18 @@ def load_dashboard(db_path, runs_limit: int = 30) -> dict:
     by_node: dict[str, dict] = {}
     trend_rows_map: dict[str, dict] = {}
     for row in result_rows:
-        (name, run_id, rtt, speed, verdict, exit_ip, risk_pct,
+        (name, run_id, rtt, speed, verdict, exit_ip, exit_ip6, risk_pct,
          cc, city, isp, hosting, geo_match, services, notes, error, ntype) = row
         trend_rows_map.setdefault(name, {"node": name, "cells": {}})
         trend_rows_map[name]["cells"][run_id] = {
             "rtt": rtt, "speed": speed, "verdict": verdict,
-            "exit_ip": exit_ip, "risk_pct": risk_pct,
+            "exit_ip": exit_ip, "exit_ip6": exit_ip6, "risk_pct": risk_pct,
         }
         snaps = by_node.setdefault(name, {})
         hosting_b = None if hosting is None else bool(hosting)
         snaps[run_id] = {
             "exit_ip": exit_ip,
+            "exit_ip6": exit_ip6,
             "country": cc,
             "city": city,
             "isp": isp,
@@ -450,7 +471,7 @@ def load_dashboard(db_path, runs_limit: int = 30) -> dict:
     for row in enriched:
         name = row["node"]
         snaps = by_node.get(name, {})
-        series = {"rtt": [], "speed": [], "risk": [], "ip": []}
+        series = {"rtt": [], "speed": [], "risk": [], "ip": [], "ip6": []}
         latest = None
         latest_id = None
         for rid in run_ids:
@@ -459,6 +480,7 @@ def load_dashboard(db_path, runs_limit: int = 30) -> dict:
             series["speed"].append(None if not snap else snap.get("speed"))
             series["risk"].append(None if not snap else snap.get("risk_pct"))
             series["ip"].append(None if not snap else snap.get("exit_ip"))
+            series["ip6"].append(None if not snap else snap.get("exit_ip6"))
             if snap:
                 latest = snap
                 latest_id = rid

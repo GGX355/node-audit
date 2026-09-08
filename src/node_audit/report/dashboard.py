@@ -173,17 +173,29 @@ _JS = r"""
 
   function ipFlow(series, runs){
     var ips = (series&&series.ip)||[];
-    if (!ips.some(Boolean)) return '<div class="empty" style="padding:12px">暂无出口 IP</div>';
+    var ip6s = (series&&series.ip6)||[];
+    var n = Math.max(ips.length, ip6s.length);
+    var any = false;
+    for (var k=0;k<n;k++){ if (ips[k] || ip6s[k]) { any=true; break; } }
+    if (!any) return '<div class="empty" style="padding:12px">暂无出口 IP</div>';
     var html='<div class="ipflow">';
-    var prev=null;
-    ips.forEach(function(ip,i){
-      if (!ip) return;
-      var chg = prev && prev!==ip;
+    var prev4=null, prev6=null;
+    for (var i=0;i<n;i++){
       var when = ((runs||[])[i]||{}).at || ((runs||[])[i]||{}).id || "";
-      html += '<span class="ip'+(chg?" chg":"")+'" title="'+esc(when)+'">'+esc(ip)
-        +(chg?'<span class="chg-tag">换</span>':'')+'</span>';
-      prev=ip;
-    });
+      var ip = ips[i], ip6 = ip6s[i];
+      if (ip) {
+        var chg4 = prev4 && prev4!==ip;
+        html += '<span class="ip'+(chg4?" chg":"")+'" title="v4 '+esc(when)+'">'+esc(ip)
+          +(chg4?'<span class="chg-tag">换</span>':'')+'</span>';
+        prev4=ip;
+      }
+      if (ip6) {
+        var chg6 = prev6 && prev6!==ip6;
+        html += '<span class="ip'+(chg6?" chg":"")+'" title="v6 '+esc(when)+'">'+esc(ip6)
+          +(chg6?'<span class="chg-tag">换</span>':'')+'</span>';
+        prev6=ip6;
+      }
+    }
     return html+'</div>';
   }
 
@@ -234,7 +246,8 @@ _JS = r"""
       +'<div class="title">'+esc(n.name)+'</div>'
       +'<div class="verdict '+vcls+'">'+esc(n.verdict||"—")+(n.degraded?" · 最近变慢":"")+(n.ip_rotated?" · IP 已换":"")+'</div>'
       +'<div class="facts">'
-      +'<div><b>出口</b>'+esc(L.exit_ip||"—")+'</div>'
+      +'<div><b>出口 v4</b>'+esc(L.exit_ip||"—")+'</div>'
+      +'<div><b>出口 v6</b>'+esc(L.exit_ip6||"—")+'</div>'
       +'<div><b>归属</b>'+esc([L.country,L.city].filter(Boolean).join(" ")||"—")+'</div>'
       +'<div><b>ISP</b>'+esc(L.isp||"—")+'</div>'
       +'<div><b>地区预期</b>'+esc(n.region||"—")+'</div>'
@@ -363,7 +376,8 @@ def demo_payload() -> dict:
                 "ip_rotated": True,
                 "in_latest": True,
                 "latest": {
-                    "exit_ip": "36.2.2.2", "country": "TW", "city": "Taipei",
+                    "exit_ip": "36.2.2.2", "exit_ip6": "2001:db8:1::2",
+                    "country": "TW", "city": "Taipei",
                     "isp": "Chunghwa Telecom", "rtt": 90, "speed": 20.0,
                     "risk_pct": 18, "hosting": False, "geo_match": "match",
                     "services": {
@@ -371,13 +385,14 @@ def demo_payload() -> dict:
                         "netflix": {"status": "full", "region": "TW"},
                         "tiktok": {"status": "ok"},
                     },
-                    "notes": ["RTT 超出合理上限"], "error": None,
+                    "notes": ["RTT 超出合理上限", "同时有 v6 出口 2001:db8:1::2"], "error": None,
                 },
                 "series": {
                     "rtt": [40, 42, 90],
                     "speed": [50.0, 48.0, 20.0],
                     "risk": [7, 7, 18],
                     "ip": ["36.1.1.1", "36.1.1.1", "36.2.2.2"],
+                    "ip6": ["2001:db8:1::1", "2001:db8:1::1", "2001:db8:1::2"],
                 },
             },
             {
@@ -388,7 +403,8 @@ def demo_payload() -> dict:
                 "ip_rotated": False,
                 "in_latest": True,
                 "latest": {
-                    "exit_ip": "52.196.115.92", "country": "JP", "city": "Tokyo",
+                    "exit_ip": "52.196.115.92", "exit_ip6": "2001:db8:2::52",
+                    "country": "JP", "city": "Tokyo",
                     "isp": "Amazon", "rtt": 80, "speed": 95.8,
                     "risk_pct": None, "hosting": True, "geo_match": "match",
                     "services": {
@@ -396,13 +412,14 @@ def demo_payload() -> dict:
                         "netflix": {"status": "full", "region": "JP"},
                         "tiktok": {"status": "ok"},
                     },
-                    "notes": [], "error": None,
+                    "notes": ["同时有 v6 出口 2001:db8:2::52"], "error": None,
                 },
                 "series": {
                     "rtt": [78, 81, 80],
                     "speed": [90.0, 93.0, 95.8],
                     "risk": [None, None, None],
                     "ip": ["52.196.115.92", "52.196.115.92", "52.196.115.92"],
+                    "ip6": ["2001:db8:2::52", "2001:db8:2::52", "2001:db8:2::52"],
                 },
             },
             {
@@ -413,7 +430,8 @@ def demo_payload() -> dict:
                 "ip_rotated": False,
                 "in_latest": True,
                 "latest": {
-                    "exit_ip": "14.0.1.8", "country": "HK", "city": "Hong Kong",
+                    "exit_ip": "14.0.1.8", "exit_ip6": None,
+                    "country": "HK", "city": "Hong Kong",
                     "isp": "HGC", "rtt": 28, "speed": 22.4,
                     "risk_pct": 4, "hosting": False, "geo_match": "match",
                     "services": {
@@ -428,6 +446,7 @@ def demo_payload() -> dict:
                     "speed": [21.0, 22.1, 22.4],
                     "risk": [5, 4, 4],
                     "ip": ["14.0.1.8", "14.0.1.8", "14.0.1.8"],
+                    "ip6": [None, None, None],
                 },
             },
         ],

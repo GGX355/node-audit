@@ -66,7 +66,7 @@ def write_markdown(reports, path: Path, meta: dict) -> None:
         verdict = r.verdict + (("（" + "；".join(r.notes) + "）") if r.notes else "")
         cells = [
             r.name.replace("|", "/"),
-            r.exit_ip or "-",
+            r.exit_label(),
             f"{r.country or '-'} {r.city or ''}".strip(),
             (r.isp or "-").replace("|", "/"),
             (r.asn or "-").replace("|", "/"),

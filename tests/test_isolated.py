@@ -87,6 +87,8 @@ def test_build_config_pins_names_and_ports():
     assert "external-controller: 127.0.0.1:41000" in cfg
     assert 'secret: "s3cret"' in cfg
     assert "unified-delay: true" in cfg
+    assert "ipv6: true" in cfg
+    assert "ipv6: false" not in cfg
     # 内联 proxies 块原样保留
     assert "cipher: aes-128-gcm" in cfg
 

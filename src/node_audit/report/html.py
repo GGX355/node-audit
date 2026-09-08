@@ -72,9 +72,15 @@ def _trend_cell_html(cell: dict | None) -> str:
         bits.append(f"{cell['speed']}Mbps{_fmt_delta(cell.get('speed_delta'), bad_when_up=False)}")
     if cell.get("exit_ip"):
         ip = _e(cell["exit_ip"])
-        if cell.get("ip_changed"):
+        if cell.get("ip4_changed") or (cell.get("ip_changed") and not cell.get("exit_ip6")
+                                       and not cell.get("ip6_changed")):
             ip += "<span class='chg'>换</span>"
         bits.append(ip)
+    if cell.get("exit_ip6"):
+        ip6 = _e(cell["exit_ip6"])
+        if cell.get("ip6_changed"):
+            ip6 += "<span class='chg'>换</span>"
+        bits.append(ip6)
     if cell.get("risk_pct") is not None:
         bits.append(f"风控 {cell['risk_pct']}%{_fmt_delta(cell.get('risk_delta'), bad_when_up=True)}")
     v = cell.get("verdict") or "-"
@@ -121,7 +127,8 @@ def render_html(reports, meta: dict, trend: tuple) -> str:
         cells = [
             _e(r.name),
             _e(r.region_cn or "-"),
-            _e(r.exit_ip or "-"),
+            "<br>".join(p for p in (_e(r.exit_ip) if r.exit_ip else "",
+                                    _e(r.exit_ip6) if r.exit_ip6 else "") if p) or "-",
             _e(f"{r.country_code or '-'} {r.city or ''}".strip()),
             _e(r.isp or "-"),
             "<span class='dc'>机房</span>" if r.hosting is True
@@ -142,7 +149,7 @@ def render_html(reports, meta: dict, trend: tuple) -> str:
         parts.append("<h2>历史趋势（含本次）</h2>")
         parts.append(
             f"<p class='small'>最近 {len(runs)} 次审计，旧 → 新。"
-            "「换」= 相对上次出口 IP 变了；风控 / RTT / 速度旁为相对上次的 Δ "
+            "「换」= 相对上次 v4 或 v6 出口变了（两个地址分别标）；风控 / RTT / 速度旁为相对上次的 Δ "
             "（红=变差，绿=变好）。速度下降 ≥40% 或 RTT 翻倍的节点整行标红并置顶"
             f"{f'（本次 {n_slow} 个）' if n_slow else ''}。"
             "未测 = 该次未覆盖此节点。</p>"

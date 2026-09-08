@@ -16,10 +16,11 @@ from node_audit.core.models import DeepCheck, NodeReport
 from node_audit.report.html import publish_latest, render_html, write_html
 
 
-def _rep(name, rtt=50, speed=10.0, hosting=False, run_ip="36.227.213.17"):
+def _rep(name, rtt=50, speed=10.0, hosting=False, run_ip="36.227.213.17", run_ip6=None):
     r = NodeReport(name=name, node_type="AnyTLS")
     r.region_code, r.region_cn = "TW", "台湾"
     r.exit_ip = run_ip
+    r.exit_ip6 = run_ip6
     r.country_code, r.country, r.city = "TW", "Taiwan", "Taipei"
     r.isp, r.asn = "Chunghwa Telecom", "AS3462"
     r.hosting = hosting
@@ -52,6 +53,7 @@ def test_history_roundtrip():
         assert a["cells"]["run2"]["speed"] == 20.0
         # 家宽 IP 轮换在趋势里直接可见
         assert a["cells"]["run2"]["exit_ip"] == "36.227.999.999"
+        assert a["cells"]["run2"]["exit_ip6"] is None
         # run2 没测节点B
         b = next(r for r in rows if r["node"] == "节点B")
         assert "run2" not in b["cells"]
@@ -225,6 +227,7 @@ def test_schema_migrates_legacy_user_version_0():
             assert "subscription_id" in run_cols
             cols = {r[1] for r in conn.execute("PRAGMA table_info(results)")}
             assert "risk_pct" in cols and "deep" in cols
+            assert "exit_ip6" in cols
             _add_column_if_missing(conn, "results", "foo_extra", "TEXT")
             _add_column_if_missing(conn, "results", "foo_extra", "TEXT")
             cols2 = {r[1] for r in conn.execute("PRAGMA table_info(results)")}
@@ -263,6 +266,52 @@ def test_enrich_trend_ip_change_risk_delta_and_slow_sort():
     assert stable["ip_changed"] is False
     assert stable["risk_delta"] == -1
     assert stable["slow"] is False
+
+
+def test_schema_v3_adds_exit_ip6_from_v2():
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "history.db")
+        raw = sqlite3.connect(db)
+        raw.executescript(
+            "CREATE TABLE runs(run_id TEXT PRIMARY KEY, mode TEXT, "
+            "controller TEXT, created_at TEXT, subscription_id TEXT);\n"
+            "CREATE TABLE results(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "run_id TEXT, node_name TEXT, exit_ip TEXT, created_at TEXT);\n"
+            "PRAGMA user_version = 2;"
+        )
+        raw.commit()
+        raw.close()
+        conn = connect(db)
+        try:
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(results)")}
+            assert "exit_ip6" in cols
+        finally:
+            conn.close()
+
+
+def test_history_roundtrip_exit_ip6():
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "history.db")
+        save_run([_rep("双栈", run_ip="1.1.1.1", run_ip6="2001:db8::1")],
+                 _meta("run1", "2026-01-01T00:00:00"), db)
+        runs, rows = load_trend(db)
+        assert rows[0]["cells"]["run1"]["exit_ip6"] == "2001:db8::1"
+
+
+def test_enrich_trend_v6_change_counts_as_ip_changed():
+    runs = ["a", "b"]
+    rows = [{"node": "双栈", "cells": {
+        "a": {"rtt": 40, "speed": 10.0, "verdict": "机房",
+              "exit_ip": "1.1.1.1", "exit_ip6": "2001:db8::1", "risk_pct": None},
+        "b": {"rtt": 40, "speed": 10.0, "verdict": "机房",
+              "exit_ip": "1.1.1.1", "exit_ip6": "2001:db8::2", "risk_pct": None},
+    }}]
+    out = enrich_trend(runs, rows)
+    cell = out[0]["cells"]["b"]
+    assert cell["ip_changed"] is True
+    assert cell["ip4_changed"] is False
+    assert cell["ip6_changed"] is True
 
 
 def test_enrich_trend_rtt_double_alone_marks_slow():

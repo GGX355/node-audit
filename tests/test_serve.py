@@ -2,12 +2,26 @@ import json
 import os
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 
 from node_audit.core.history import save_run
 from node_audit.core.models import NodeReport
 from node_audit.serve import make_server
+
+
+def _open(opener, url: str, timeout: float = 5):
+    last = None
+    for _ in range(20):
+        try:
+            return opener.open(url, timeout=timeout)
+        except urllib.error.HTTPError:
+            raise
+        except (ConnectionResetError, ConnectionRefusedError, TimeoutError, OSError) as e:
+            last = e
+            time.sleep(0.05)
+    raise last
 
 
 def test_serve_dashboard_and_api():
@@ -26,15 +40,18 @@ def test_serve_dashboard_and_api():
         thread.start()
         try:
             port = httpd.server_address[1]
-            html = urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5).read().decode()
+            # 显式禁用环境代理：本机 Clash mixed-port 常在 HTTP_PROXY 里，
+            # urlopen 会把请求送进 7897 并被 RST。
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            html = _open(opener, f"http://127.0.0.1:{port}/").read().decode()
             assert "id='na-app'" in html
             payload = json.loads(
-                urllib.request.urlopen(f"http://127.0.0.1:{port}/api/data", timeout=5).read().decode()
+                _open(opener, f"http://127.0.0.1:{port}/api/data").read().decode()
             )
             assert payload["kpis"]["nodes"] == 1
             assert payload["nodes"][0]["name"] == "节点A"
             try:
-                urllib.request.urlopen(f"http://127.0.0.1:{port}/nope", timeout=5)
+                _open(opener, f"http://127.0.0.1:{port}/nope")
                 raise AssertionError("expected 404")
             except urllib.error.HTTPError as e:
                 assert e.code == 404

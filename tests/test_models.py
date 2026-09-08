@@ -70,6 +70,13 @@ def test_ipqs_and_abuseipdb_notes():
     assert any("AbuseIPDB 滥用置信度 75%" in n for n in notes)
 
 
+def test_exit_label_dual_and_single():
+    assert _rep(exit_ip="1.1.1.1", exit_ip6="2001:db8::1").exit_label() == "1.1.1.1 / 2001:db8::1"
+    assert _rep(exit_ip="1.1.1.1").exit_label() == "1.1.1.1"
+    assert _rep(exit_ip6="2001:db8::1").exit_label() == "2001:db8::1"
+    assert _rep().exit_label() == "-"
+
+
 def test_error_report():
     verdict, notes = build_verdict(_rep(error="超时"))
     assert verdict == "失败"

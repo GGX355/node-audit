@@ -5,11 +5,13 @@
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -51,8 +53,17 @@ def _strip_text(html: str) -> list[str]:
     return [t.strip() for t in re.sub(r"<[^>]+>", "\n", text).split("\n") if t.strip()]
 
 
-def check_identity(proxy: str, timeout: float = 15) -> dict | None:
-    """ip-api.com 免费端点：一次调用同时拿出口 IP 与身份字段。"""
+def ptr_qname(ip: str | None) -> str | None:
+    """PTR 查询名：v4 → in-addr.arpa，v6 → RFC 3596 半字节反转 ip6.arpa。"""
+    if not ip:
+        return None
+    try:
+        return ipaddress.ip_address(ip.strip()).reverse_pointer
+    except ValueError:
+        return None
+
+
+def _ipapi_identity(proxy: str, timeout: float) -> dict | None:
     fields = "query,country,countryCode,city,isp,org,as,asname,proxy,hosting,mobile"
     try:
         status, data = http_get(f"http://ip-api.com/json/?fields={fields}", proxy, timeout)
@@ -64,12 +75,93 @@ def check_identity(proxy: str, timeout: float = 15) -> dict | None:
         return None
 
 
+def _ipify6(proxy: str, timeout: float) -> str | None:
+    """api64.ipify.org：有 v6 出口则返回含 ':' 的地址，否则是 v4。"""
+    try:
+        status, data = http_get("https://api64.ipify.org", proxy, timeout)
+        if status != 200:
+            return None
+        text = data.decode().strip()
+        if ":" in text:
+            return text
+    except Exception:
+        pass
+    return None
+
+
+def _ipwho_identity(ip: str, proxy: str, timeout: float) -> dict | None:
+    """ipwho.is：免费、支持 v6、无 key。hosting 在 security 里，没有就算了。"""
+    try:
+        status, data = http_get(f"https://ipwho.is/{quote(ip, safe='')}", proxy, timeout)
+        if status != 200:
+            return None
+        d = json.loads(data.decode())
+        if d.get("success") is False:
+            return None
+        conn = d.get("connection") or {}
+        sec = d.get("security") or {}
+        asn, org = conn.get("asn"), conn.get("org")
+        as_str = f"AS{asn}" + (f" {org}" if org else "") if asn else None
+        hosting = sec.get("hosting")
+        if hosting is None:
+            ctype = str(conn.get("type") or conn.get("connection_type") or "").lower()
+            if ctype in ("hosting", "datacenter", "cdn"):
+                hosting = True
+            elif ctype in ("isp", "residential", "cable/dsl", "cable", "dsl", "consumer"):
+                hosting = False
+        return {
+            "query": d.get("ip") or ip,
+            "country": d.get("country"),
+            "countryCode": d.get("country_code"),
+            "city": d.get("city"),
+            "isp": conn.get("isp"),
+            "org": org,
+            "as": as_str,
+            "asname": org,
+            "proxy": sec.get("proxy"),
+            "hosting": hosting,
+        }
+    except Exception:
+        return None
+
+
+def check_identity(proxy: str, timeout: float = 15) -> dict | None:
+    """双栈出口身份。v4 走 ip-api（含 hosting）；v6 走 ipify + ipwho.is。
+
+    返回 None 仅当 v4 与 v6 都拿不到。判定字段优先用带 hosting 的那一侧。
+    """
+    v4 = _ipapi_identity(proxy, timeout)
+    v6_addr = _ipify6(proxy, timeout)
+    v6 = _ipwho_identity(v6_addr, proxy, timeout) if v6_addr else None
+    if v6_addr and not v6:
+        v6 = {"query": v6_addr}
+    if not v4 and not v6:
+        return None
+    out = {
+        "query": (v4 or {}).get("query"),
+        "query6": (v6 or {}).get("query") or v6_addr,
+        "v4": v4,
+        "v6": v6,
+    }
+    if v4 and v4.get("hosting") is not None:
+        primary, src = v4, "ip-api"
+    elif v6 and v6.get("hosting") is not None:
+        primary, src = v6, "ipwho.is"
+    elif v4:
+        primary, src = v4, "ip-api"
+    else:
+        primary, src = v6, "ipwho.is"
+    out["identity_source"] = src
+    for k in ("country", "countryCode", "city", "isp", "org", "as", "asname", "proxy", "hosting"):
+        out[k] = (primary or {}).get(k)
+    return out
+
+
 def check_ptr(ip: str | None, proxy: str, timeout: float = 10) -> str | None:
     """DNS-over-HTTPS 反查 PTR，不依赖系统 nslookup（跨平台一致）。"""
-    if not ip or "." not in ip:
+    name = ptr_qname(ip)
+    if not name:
         return None
-    labels = ".".join(reversed(ip.split(".")))
-    name = f"{labels}.in-addr.arpa"
     for resolver in ("https://cloudflare-dns.com/dns-query", "https://dns.google/resolve"):
         try:
             status, data = http_get(
@@ -90,8 +182,9 @@ def check_rdap(ip: str | None, proxy: str, timeout: float = 20) -> dict | None:
     """rdap.org 自动引导到正确 RIR，解析注册组织与注册日期。"""
     if not ip:
         return None
+    path = quote(ip, safe="") if ":" in ip else ip
     try:
-        status, data = http_get(f"https://rdap.org/ip/{ip}", proxy, timeout)
+        status, data = http_get(f"https://rdap.org/ip/{path}", proxy, timeout)
         if status != 200:
             return None
         d = json.loads(data.decode())

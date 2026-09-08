@@ -1,3 +1,3 @@
 """node-audit: Clash/mihomo 节点质量审计工具。"""
 
-__version__ = "0.6.0"
+__version__ = "0.8.0"
