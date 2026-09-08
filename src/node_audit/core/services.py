@@ -38,7 +38,7 @@ NETFLIX_NON_ORIGINAL_TITLE = 81280792
 # TikTok 风控页特征：命中即判 captcha；反爬变化时更新此表即可
 TIKTOK_CAPTCHA_MARKERS = ("captcha", "/verify", "punish", "security check")
 
-TIMEOUT = 8
+TIMEOUT = 15  # IPv6 / 高延迟节点 8s 经常来不及握完 TLS
 
 PROBES = {}  # 文件末尾注册
 SERVICE_SHORT = {"openai": "GPT", "netflix": "NF", "tiktok": "TT"}
@@ -48,16 +48,36 @@ def _blank(service: str) -> dict:
     return {"service": service, "status": "unknown", "region": None, "note": ""}
 
 
+def _err_note(err: str | None) -> str:
+    if not err:
+        return "请求失败"
+    low = err.lower()
+    if "timed out" in low or "timeout" in low:
+        return "超时（节点慢或目标不可达）"
+    if "reset" in low or "10054" in err or "104" in err:
+        return "连接被重置"
+    if "refused" in low:
+        return "连接被拒绝"
+    if "503" in err or "502" in err or "504" in err:
+        return err
+    return err[:80]
+
+
 def _get_retry(url: str, proxy: str, attempts: int = 2):
     """带一次重试的 GET；全部失败返回 (None, 错误摘要)。"""
     last = ""
     for i in range(attempts):
         try:
-            return http_get(url, proxy, TIMEOUT), None
+            status, data = http_get(url, proxy, TIMEOUT)
+            if status in (502, 503, 504) and i + 1 < attempts:
+                last = f"HTTP {status}"
+                time.sleep(0.6)
+                continue
+            return (status, data), None
         except Exception as e:  # noqa: BLE001
             last = f"{type(e).__name__}: {str(e)[:80]}"
             if i + 1 < attempts:
-                time.sleep(0.5)
+                time.sleep(0.6)
     return None, last
 
 
@@ -79,22 +99,20 @@ def _openai_verdict(models_status: int | None, models_body: str) -> tuple[str, s
 def probe_openai(proxy: str) -> dict:
     out = _blank("openai")
     region = None
-    try:
-        status, data = http_get(PROBE_URLS["openai"][0], proxy, TIMEOUT)
-        if status == 200:
-            m = re.search(r"^loc=([A-Za-z]{2})\s*$",
-                          data.decode(errors="replace"), re.M)
-            if m:
-                region = m.group(1).upper()
-    except Exception:  # noqa: BLE001
-        pass
+    trace, _ = _get_retry(PROBE_URLS["openai"][0], proxy)
+    if trace is not None and trace[0] == 200:
+        m = re.search(r"^loc=([A-Za-z]{2})\s*$",
+                      trace[1].decode(errors="replace"), re.M)
+        if m:
+            region = m.group(1).upper()
+    models, models_err = _get_retry(PROBE_URLS["openai"][1], proxy)
     models_status, body = None, ""
-    try:
-        models_status, data = http_get(PROBE_URLS["openai"][1], proxy, TIMEOUT)
+    if models is not None:
+        models_status, data = models
         body = data.decode(errors="replace")[:500]
-    except Exception:  # noqa: BLE001
-        pass
     status, note = _openai_verdict(models_status, body)
+    if models_status is None:
+        note = _err_note(models_err)
     out.update(status=status, region=region, note=note)
     return out
 
@@ -162,17 +180,17 @@ def _tiktok_verdict(status: int | None, page_text: str) -> tuple[str, str]:
 def probe_tiktok(proxy: str) -> dict:
     out = _blank("tiktok")
     region = None
-    try:
-        status, data = http_get(PROBE_URLS["tiktok"][0], proxy, TIMEOUT)
-        text = data.decode(errors="replace")[:30000]
-        m = re.search(r'"region"\s*:\s*"([A-Z]{2})"', text)
-        if m:
-            region = m.group(1)
-    except Exception as e:  # noqa: BLE001
-        out["note"] = f"{type(e).__name__}"[:60]
+    got, err = _get_retry(PROBE_URLS["tiktok"][0], proxy)
+    if got is None:
+        out.update(status="unknown", note=_err_note(err))
         return out
-    status, note = _tiktok_verdict(status, text)
-    out.update(status=status, region=region, note=note)
+    status, data = got
+    text = data.decode(errors="replace")[:30000]
+    m = re.search(r'"region"\s*:\s*"([A-Z]{2})"', text)
+    if m:
+        region = m.group(1)
+    st, note = _tiktok_verdict(status, text)
+    out.update(status=st, region=region, note=note)
     return out
 
 

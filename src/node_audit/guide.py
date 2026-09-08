@@ -128,6 +128,8 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
 <dd>两件事：① <code>deep = auto</code> 时<strong>机房节点默认不跑网页深检</strong>（hosting=true 已经够判机房）。② ping0.cc / scamalytics 网页经常反爬，扒首页会空。0.11 起改查 <code>ping0.cc/ip/地址</code>，并加上 <strong>IPPure JSON</strong>（无验证码，有风险分/是否住宅）和 iplark JSON。不会加 ipjiance.com——要写验证码，自动化跑不了。</dd>
 <dt>本机没有 IPv6</dt>
 <dd>没关系。探测走节点的 HTTP 代理，不要求你电脑有 IPv6。</dd>
+<dt>GPT / NF / TT 有时是「未知」</dt>
+<dd>探针超时 15 秒仍连不上目标（常见于纯 IPv6、高延迟、节点 DNS 烂），就会记未知，不是没测。控制台会写原因（超时 / 连接重置）。能握手时才会出现可用 / 人机 / 封禁。</dd>
 <dt>会不会把我的账号搞风控？</dt>
 <dd>isolated 下探针走临时端口，你的浏览器不动。不要用 attach 模式还挂着已登录的网页。</dd>
 </dl>

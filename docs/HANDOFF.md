@@ -2,7 +2,7 @@
 
 仓库：https://github.com/GGX355/node-audit  
 分支：`main`  
-当前代码版本：**0.12.0**（isolated 默认 3 路并行）
+当前代码版本：**0.13.0**（服务探针超时原因 + IPv6 身份补全）
 
 下载给用户用的程序：GitHub **Releases** 里的 `node-audit.exe`（不要从源码树里找，exe 不进 git）。
 

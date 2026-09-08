@@ -285,8 +285,10 @@ _JS = r"""
     var cn={ok:"可用",full:"全解锁",original:"仅自制",captcha:"人机",blocked:"封禁",none:"不可用",unknown:"未知"};
     return '<div class="svc">'+names.map(function(k){
       var r=s[k]||{}; var cls=st[r.status]||"";
-      return '<span class="'+cls+'">'+esc(map[k]||k)+' '+esc(cn[r.status]||r.status||"?")
-        +(r.region?" "+esc(r.region):"")+'</span>';
+      var extra = r.region ? " "+esc(r.region) : "";
+      if (r.status==="unknown" && r.note) extra += " · "+esc(r.note);
+      return '<span class="'+cls+'" title="'+esc(r.note||r.status||"")+'">'+esc(map[k]||k)+' '
+        +esc(cn[r.status]||r.status||"?")+extra+'</span>';
     }).join("")+'</div>';
   }
 

@@ -37,6 +37,13 @@ def test_netflix_verdict():
     assert _netflix_verdict(None, 200)[0] == "full"
 
 
+def test_err_note_timeout_and_reset():
+    from node_audit.core.services import _err_note
+    assert "超时" in _err_note("URLError: timed out")
+    assert "重置" in _err_note("ConnectionResetError: [WinError 10054] reset")
+    assert _err_note(None) == "请求失败"
+
+
 def test_tiktok_verdict():
     assert _tiktok_verdict(200, "<html>normal page</html>")[0] == "ok"
     # 特征大小写不敏感

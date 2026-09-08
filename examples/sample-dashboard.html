@@ -130,7 +130,7 @@ svg.spark{width:100%;height:72px;display:block}
   aside.side{border-right:0;border-bottom:1px solid var(--stroke);max-height:40vh}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
-</style></head><body><div id='na-app'><header class='top'><i class='mark'></i><span class='brand'>node-audit</span><span class='meta' id='meta'></span><button class='csv' id='csv' type='button'>导出 CSV</button><button class='csv' id='help-btn' type='button'>说明</button></header><div id='demo-banner' class='demo'>演示数据，不是你的订阅。跑 <code>node-audit audit --mode isolated --yes</code> 之后打开 <code>node-audit-report/latest.html</code> 才是当前订阅的全量节点。</div><div class='body'><aside class='side'><div class='side-tools'><input id='q' type='search' placeholder='搜索节点' autocomplete='off'><div class='chips'><button class='on' data-f='all'>全部</button><button data-f='res'>家宽</button><button data-f='dc'>机房</button><button data-f='slow'>变慢</button><button data-f='rot'>换 IP</button><button data-f='fail'>失败</button><button data-f='hist'>历史</button></div></div><div id='list'></div><div class='hint'>j / k 切换节点 · ? 使用说明 · 「历史」= 上次订阅残留</div></aside><main class='main'><div class='kpis' id='kpis'></div><div id='detail'></div></main></div></div><div id='help' class='help-ov' role='dialog' aria-label='使用说明'><div class='help-card'><div class='help-top'><b>使用说明</b><button class='csv' id='help-close' type='button'>关闭</button></div><p class='guide-ver'>node-audit 0.11.0</p>
+</style></head><body><div id='na-app'><header class='top'><i class='mark'></i><span class='brand'>node-audit</span><span class='meta' id='meta'></span><button class='csv' id='csv' type='button'>导出 CSV</button><button class='csv' id='help-btn' type='button'>说明</button></header><div id='demo-banner' class='demo'>演示数据，不是你的订阅。跑 <code>node-audit audit --mode isolated --yes</code> 之后打开 <code>node-audit-report/latest.html</code> 才是当前订阅的全量节点。</div><div class='body'><aside class='side'><div class='side-tools'><input id='q' type='search' placeholder='搜索节点' autocomplete='off'><div class='chips'><button class='on' data-f='all'>全部</button><button data-f='res'>家宽</button><button data-f='dc'>机房</button><button data-f='slow'>变慢</button><button data-f='rot'>换 IP</button><button data-f='fail'>失败</button><button data-f='hist'>历史</button></div></div><div id='list'></div><div class='hint'>j / k 切换节点 · ? 使用说明 · 「历史」= 上次订阅残留</div></aside><main class='main'><div class='kpis' id='kpis'></div><div id='detail'></div></main></div></div><div id='help' class='help-ov' role='dialog' aria-label='使用说明'><div class='help-card'><div class='help-top'><b>使用说明</b><button class='csv' id='help-close' type='button'>关闭</button></div><p class='guide-ver'>node-audit 0.13.0</p>
 <h2 id='g1'>这是什么</h2>
 <p>node-audit 会把你订阅里的<strong>每一个真实节点</strong>测一遍：出口 IP（含 IPv6）、是不是机房、PTR/ASN、延迟、速度、风控，以及 GPT / Netflix / TikTok 能不能用。</p>
 <p>默认用 <strong>isolated</strong>：在本机另起一个临时内核，<strong>不会切换你正在上网的代理</strong>。浏览器、下载、游戏都不受影响。</p>
@@ -201,6 +201,7 @@ svg.spark{width:100%;height:72px;display:block}
 <tr><td><code>include</code></td><td>空=全量</td><td>只测名称匹配的节点，正则。例如 <code>台湾|香港原生</code>。</td></tr>
 <tr><td><code>exclude</code></td><td>空</td><td>排除匹配的名称。</td></tr>
 <tr><td><code>limit</code></td><td>空</td><td>最多测前 N 个，试跑用。</td></tr>
+<tr><td><code>workers</code></td><td>3</td><td>isolated 同时测几个节点（1–8）。测速会并行；ip-api 仍然排队。attach 无效。</td></tr>
 <tr><td><code>speed_bytes</code></td><td>10MB</td><td>测速下载量。名称含「勿跑大流量」的节点会自动降到 2MB。</td></tr>
 <tr><td><code>skip_speed</code></td><td>false</td><td>true = 不测速，会快很多。</td></tr>
 <tr><td><code>deep</code></td><td>auto</td><td>auto=只对住宅做网页深检；off=不做；all=每个都做（慢）。</td></tr>
@@ -241,6 +242,8 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
 <dd>两件事：① <code>deep = auto</code> 时<strong>机房节点默认不跑网页深检</strong>（hosting=true 已经够判机房）。② ping0.cc / scamalytics 网页经常反爬，扒首页会空。0.11 起改查 <code>ping0.cc/ip/地址</code>，并加上 <strong>IPPure JSON</strong>（无验证码，有风险分/是否住宅）和 iplark JSON。不会加 ipjiance.com——要写验证码，自动化跑不了。</dd>
 <dt>本机没有 IPv6</dt>
 <dd>没关系。探测走节点的 HTTP 代理，不要求你电脑有 IPv6。</dd>
+<dt>GPT / NF / TT 有时是「未知」</dt>
+<dd>探针超时 15 秒仍连不上目标（常见于纯 IPv6、高延迟、节点 DNS 烂），就会记未知，不是没测。控制台会写原因（超时 / 连接重置）。能握手时才会出现可用 / 人机 / 封禁。</dd>
 <dt>会不会把我的账号搞风控？</dt>
 <dd>isolated 下探针走临时端口，你的浏览器不动。不要用 attach 模式还挂着已登录的网页。</dd>
 </dl>
@@ -387,8 +390,10 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
     var cn={ok:"可用",full:"全解锁",original:"仅自制",captcha:"人机",blocked:"封禁",none:"不可用",unknown:"未知"};
     return '<div class="svc">'+names.map(function(k){
       var r=s[k]||{}; var cls=st[r.status]||"";
-      return '<span class="'+cls+'">'+esc(map[k]||k)+' '+esc(cn[r.status]||r.status||"?")
-        +(r.region?" "+esc(r.region):"")+'</span>';
+      var extra = r.region ? " "+esc(r.region) : "";
+      if (r.status==="unknown" && r.note) extra += " · "+esc(r.note);
+      return '<span class="'+cls+'" title="'+esc(r.note||r.status||"")+'">'+esc(map[k]||k)+' '
+        +esc(cn[r.status]||r.status||"?")+extra+'</span>';
     }).join("")+'</div>';
   }
 

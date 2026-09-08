@@ -107,6 +107,24 @@ def _check_node(rep: NodeReport, proxy: str, opts, log=print) -> None:
     rep.hosting = identity.get("hosting")
     rep.proxy_flag = identity.get("proxy")
     log(f"    出口  {rep.exit_label()} {rep.country}/{rep.city} | {rep.isp} | {rep.asn}")
+    if rep.hosting is None or not rep.country_code:
+        ipu = check_ippure(proxy)
+        if ipu.get("available"):
+            if rep.hosting is None:
+                if ipu.get("is_residential") is True:
+                    rep.hosting = False
+                elif ipu.get("is_residential") is False or ipu.get("is_datacenter"):
+                    rep.hosting = True
+            if not rep.country_code and ipu.get("country_code"):
+                rep.country_code = ipu["country_code"]
+                rep.country = ipu.get("country") or rep.country
+                rep.city = ipu.get("city") or rep.city
+            if not rep.isp and ipu.get("org"):
+                rep.isp = ipu["org"]
+                rep.org = ipu.get("org") or rep.org
+            if not rep.asn and ipu.get("asn"):
+                rep.asn = f"AS{ipu['asn']}" + (f" {ipu.get('org')}" if ipu.get("org") else "")
+            log(f"    补全  IPPure {ipu.get('ip')} hosting={rep.hosting} {rep.country_code}/{rep.city}")
     if rep.exit_ip and rep.exit_ip6:
         if identity.get("identity_source") == "ipwho.is":
             other, tag = identity.get("v4") or {}, "v4"
@@ -170,12 +188,18 @@ def _check_node(rep: NodeReport, proxy: str, opts, log=print) -> None:
             rep.services[name] = res
             short = SERVICE_SHORT.get(name, name[:3].upper())
             region = f"({res['region']})" if res.get("region") else ""
-            log(f"    服务  {short}: {res['status']}{region}")
+            why = ""
+            if res.get("status") == "unknown" and res.get("note"):
+                why = f" {res['note']}"
+            log(f"    服务  {short}: {res['status']}{region}{why}")
 
     if opts.deep == "off":
         return
-    if not ((rep.hosting is False) or opts.deep == "all"):
+    if rep.hosting is True and opts.deep != "all":
         log("    深检  跳过（机房 IP）")
+        return
+    if rep.hosting is None and opts.deep != "all":
+        log("    深检  跳过（未判定机房/住宅）")
         return
 
     deep = DeepCheck()
