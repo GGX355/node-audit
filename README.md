@@ -8,7 +8,7 @@ Clash / mihomo 节点质量审计工具：对订阅里的**每一个节点**自�
 
 | 模式 | 原理 | 适用 |
 |---|---|---|
-| **isolated**（v0.2，**默认**） | 从 Verge 运行时配置原样搬运 `proxies:` 块，在本机拉起一个临时 mihomo 实例，为每个节点开一个只绑定 127.0.0.1 的独立端口并钉住该节点 | **全程零干扰**——你正在用的代理、浏览、下载都不受影响 |
+| **isolated**（v0.2，**默认**） | 从 Verge / Verge Rev 运行时配置原样搬运 `proxies:` 块，在本机拉起一个临时 mihomo 实例，为每个节点开一个只绑定 127.0.0.1 的独立端口并钉住该节点。节点列表可只从 yaml 解析，**不必连接正在跑的控制器** | **全程零干扰**——你正在用的代理、浏览、下载都不受影响；适合计划任务无人值守 |
 | **attach**（v0.1，需显式指定） | 接管运行中的实例：记录快照 → 切 global 模式逐节点轮巡 → 还原 | 内核二进制找不到时的回退；**期间流量会逐节点跳转** |
 
 两种模式共用同一条检查管线与判定逻辑，报告格式完全一致。
@@ -47,6 +47,12 @@ node-audit audit --mode isolated --include "台湾|香港原生" --yes
 # 全节点深检 + 官方风控 API（key 可用环境变量 NODE_AUDIT_IPQS_KEY / NODE_AUDIT_ABUSEIPDB_KEY）
 node-audit audit --mode isolated --yes --deep all \
   --ipqs-key XXXX --abuseipdb-key XXXX
+
+# 无人值守：不连正在跑的控制器，报告固定入口 latest.html
+node-audit audit --mode isolated --yes
+# 然后打开 node-audit-report/latest.html（控制台）
+# 或起本机页面：
+node-audit serve --open
 ```
 
 常用参数：
@@ -66,6 +72,7 @@ node-audit audit --mode isolated --yes --deep all \
 | `--core PATH` | isolated 模式的 mihomo 内核路径（默认自动查找 Clash Verge 安装目录） |
 | `--out DIR` | 报告输出目录（默认 `./node-audit-report`） |
 | `--db PATH` | 历史趋势 SQLite 路径（默认 `<out>/history.db`） |
+| `--trend-runs N` | HTML 趋势表保留最近 N 次（默认 30，约一个月每日） |
 | `--no-history` | 不写历史库、不生成 HTML 趋势报告 |
 | `--api / --pipe / --secret / --mixed-port` | 手动指定控制器与代理端口（默认自动发现） |
 
@@ -90,13 +97,39 @@ node-audit audit --mode isolated --yes --deep all \
 
 ## 输出物
 
-每次审计在输出目录生成四样东西：
+每次审计在输出目录生成这些东西：
 
 | 文件 | 用途 |
 |---|---|
-| `audit-<时间戳>.html` | **推荐查看**：自包含单文件（内联样式、无外部资源），含本次结果、判定分布与历史趋势表 |
+| **`latest.html`** | **控制台（软件页）**：侧栏选节点、KPI、RTT/速度/风控折线、IP 时间轴。每次审计覆盖写入 |
+| `audit-<时间戳>.html` | 可打印的表格归档 |
 | `audit-<时间戳>.md` / `.json` | 人读明细 / 程序可读全量字段 |
-| `history.db` | SQLite 历史库：每次审计的每节点结果。趋势视图据此生成，能看到家宽 IP 轮换、RTT/速度漂移、判定变化 |
+| `history.db` | SQLite 历史库（带 `PRAGMA user_version` 迁移）。趋势表里：IP 旁「换」= 出口变了；风控/RTT/速度带 Δ；速度掉 ≥40% 或 RTT 翻倍的节点整行标红置顶 |
+
+## 定时任务（Windows）
+
+仓库 `examples/` 里有每日 04:00 无人值守 isolated 审计的示例（不依赖正在跑的 Verge 控制器，只要磁盘上有运行时配置和 mihomo 内核）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File examples\register-daily-task.ps1
+```
+
+会注册计划任务 `node-audit-daily`，跑 `examples\audit-daily.bat`（`PYTHONPATH=src`，`--mode isolated --yes`）。跑完打开 `node-audit-report\latest.html`（控制台），或：
+
+```bash
+node-audit serve --open
+```
+
+只监听 `127.0.0.1`。`examples/sample-dashboard.html` 是 **3 个假节点的演示**，不是你的订阅。当前订阅全量节点要先跑一次 `audit`。
+
+跑完后会按**节点名重叠率**判断订阅：`|交集| / min(本次, 对方) ≥ 90%` 视为同一订阅，时间轴续上；低于 90% 视为新订阅，自动隔离（换回旧机场还能对上原来那条）。同一订阅里这次没测到的节点仍可在控制台点「历史」。
+
+```text
+schtasks /Run /TN node-audit-daily          # 立刻跑一次
+schtasks /Delete /TN node-audit-daily /F    # 取消
+```
+
+改成每周：把 ps1 里的 `/SC DAILY /ST 04:00` 换成 `/SC WEEKLY /D SUN /ST 04:00`。
 
 中断安全：审计中途 Ctrl+C 会保留已完成节点的部分报告并自动还原代理状态。
 
@@ -133,7 +166,7 @@ python tests/run_all.py   # 零依赖
 - 出口 IP 审计覆盖 IPv4（ip-api 免费端点仅 v4）；标 IPv6 的节点实际也多以 v4 出口被检测，v6-only 出口列入路线图；
 - Scamalytics / ping0 为网页解析（best-effort），反爬策略变化时自动标记“不可用”而不阻塞整体；
 - 延迟合理性阈值按“用户在中国大陆”校准，其他出发地请调整 `core/filters.py` 中的 `RTT_MAX_MS`；
-- isolated 模式要求订阅以内联 `proxies:` 形式存在于 Verge 运行时配置（Clash Verge Rev 默认如此）；走 `proxy-providers` 的配置请用 attach 模式。
+- isolated 模式要求订阅以内联 `proxies:` 形式存在于 Verge 运行时配置（Clash Verge / Verge Rev 默认如此）；走 `proxy-providers` 的配置请用 attach 模式。
 
 ## 路线图
 
@@ -141,7 +174,12 @@ python tests/run_all.py   # 零依赖
 - [x] v0.2 isolated 零干扰模式；IPQS / AbuseIPDB 官方 API；测速硬时限；atexit 状态还原兜底；单元测试
 - [x] v0.3 服务风控探针（OpenAI / Netflix / TikTok），无 Cookie 匿名实测
 - [x] v0.4 自包含 HTML 报告 + SQLite 历史趋势（家宽 IP 轮换、RTT/速度/判定跨次对比）
-- [ ] v1.0 Go 重写单二进制；IPv6 出口审计；SVG 趋势图
+- [x] v0.5 日更仪表盘：`latest.html`、趋势语义（换 IP / 风控漂 / 变慢置顶）、schema 迁移、无人值守 isolated、计划任务示例；IPQS 直连；端口占住到内核启动；发现路径兼容非 Rev
+- [x] v0.6 控制台页面：侧栏 + KPI + SVG 折线时间轴；`node-audit serve`；`latest.html` 改为软件壳；订阅 90% 重叠隔离
+- [ ] v0.7 IPv6 出口审计（见 [`docs/PLAN-v0.7-ipv6.md`](docs/PLAN-v0.7-ipv6.md)；原「v1.0」已拆开，Go 重写不做）
+- [ ] 可选：PyInstaller 单文件 exe；控制台 sparkline 日期刻度
+
+换电脑接着做：[`docs/HANDOFF.md`](docs/HANDOFF.md)。
 
 ## 免责声明
 

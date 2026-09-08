@@ -5,6 +5,7 @@
   python -m node_audit audit --dry-run
   python -m node_audit audit --mode isolated --include "台湾|香港原生" --yes
   python -m node_audit audit --yes --speed-bytes 15MB --deep auto
+  python -m node_audit serve --open
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ from .clash.api import ClashAPI
 from .clash.discover import discover
 from .clash.transport import PipeTransport, TcpTransport
 from .core.filters import heavy_traffic, is_real_node, rate_multiplier, region_from_name
-from .core.isolated import find_core_binary, run_isolated
+from .core.isolated import find_core_binary, list_nodes_from_runtime, run_isolated
 from .core.runner import run_attach
 from .core.services import PROBES, SERVICE_SHORT, STATUS_MARK
 from .report.output import write_json, write_markdown
@@ -89,6 +90,12 @@ def _add_common(p: argparse.ArgumentParser) -> None:
                    help="mihomo 混合代理端口（默认自动发现，通常 7897）")
 
 
+def cmd_serve(args) -> int:
+    from .serve import run_server
+    return run_server(args.out, port=args.port, open_browser=args.open,
+                      db_path=args.db, runs_limit=args.trend_runs)
+
+
 def cmd_discover(args) -> int:
     disc = discover()
     if args.mixed_port:
@@ -106,15 +113,7 @@ def cmd_discover(args) -> int:
     return 0
 
 
-def cmd_audit(args) -> int:
-    disc = discover()
-    if args.mixed_port:
-        disc.mixed_port = args.mixed_port
-    api = ClashAPI(build_transport(disc, args))
-    cfg = api.configs()
-    proxies = api.proxies()
-    all_nodes = [(n, p.get("type", "")) for n, p in proxies.items() if is_real_node(n, p.get("type", ""))]
-
+def _filter_targets(all_nodes, args):
     inc = re.compile(args.include) if args.include else None
     exc = re.compile(args.exclude) if args.exclude else None
     targets = []
@@ -126,12 +125,61 @@ def cmd_audit(args) -> int:
         targets.append((n, t))
     if args.limit:
         targets = targets[: args.limit]
+    return targets
+
+
+def _nodes_via_api(disc, args):
+    api = ClashAPI(build_transport(disc, args))
+    cfg = api.configs()
+    proxies = api.proxies()
+    all_nodes = [(n, p.get("type", "")) for n, p in proxies.items()
+                 if is_real_node(n, p.get("type", ""))]
+    return api, cfg.get("mode"), all_nodes
+
+
+def cmd_audit(args) -> int:
+    disc = discover()
+    if args.mixed_port:
+        disc.mixed_port = args.mixed_port
+
+    runtime_text = None
+    if disc.config_path:
+        runtime_text = Path(disc.config_path).read_text(encoding="utf-8", errors="replace")
+
+    api = None
+    cfg_mode = None
+    source_note = ""
+    all_nodes: list = []
+
+    # isolated：优先从 yaml 列节点，不强制连接正在跑的控制器（无人值守）
+    if args.mode == "isolated" and runtime_text:
+        yaml_nodes = list_nodes_from_runtime(runtime_text)
+        if yaml_nodes:
+            all_nodes = yaml_nodes
+            source_note = "节点列表来自运行时配置（未连接控制器）"
+            cfg_mode = "n/a"
+        else:
+            source_note = "运行时配置无内联 proxies，回退到控制器"
+
+    if not all_nodes:
+        try:
+            api, cfg_mode, all_nodes = _nodes_via_api(disc, args)
+        except Exception as e:  # noqa: BLE001
+            if args.mode == "isolated":
+                print(f"错误: 无法列出节点（yaml 无 proxies 且控制器不可用）: "
+                      f"{type(e).__name__}: {e}", file=sys.stderr)
+                return 1
+            raise
+
+    targets = _filter_targets(all_nodes, args)
     if not targets:
         print("没有匹配的节点（检查 --include/--exclude 是否过滤过严）。")
         return 1
 
     print(f"控制器: {disc.describe()}")
-    print(f"待测节点: {len(targets)} / {len(all_nodes)}（当前 mode={cfg.get('mode')}）")
+    if source_note:
+        print(f"         {source_note}")
+    print(f"待测节点: {len(targets)} / {len(all_nodes)}（当前 mode={cfg_mode}）")
 
     if args.dry_run:
         for n, t in targets:
@@ -150,11 +198,11 @@ def cmd_audit(args) -> int:
         if not core:
             print("错误: 未找到 mihomo 内核（可用 --core 指定路径）", file=sys.stderr)
             return 1
-        if not disc.config_path:
+        if not disc.config_path or not runtime_text:
             print("错误: isolated 模式需要读取 Verge 运行时配置，未找到；可改用 attach 模式", file=sys.stderr)
             return 1
         opts = Opts(args, disc.mixed_port)
-        opts.runtime_cfg_text = Path(disc.config_path).read_text(encoding="utf-8", errors="replace")
+        opts.runtime_cfg_text = runtime_text
         print("[isolated] 将在本机拉起独立内核实例，你正在使用的代理不受影响。")
         reports = run_isolated(targets, opts, core, log=print)
     else:
@@ -191,13 +239,23 @@ def _emit(reports, disc, args) -> None:
 
     hpath_str = "-"
     if not args.no_history:
-        from .core.history import load_trend, save_run
+        from .core.history import load_dashboard, load_trend, save_run
         db_path = Path(args.db) if args.db else outdir / "history.db"
-        save_run(reports, meta, db_path)
-        trend = load_trend(db_path)
+        sub = save_run(reports, meta, db_path)
+        if sub.get("same"):
+            print(f"订阅: 同一订阅（节点重叠 {sub['match']:.0%}，"
+                  f"{sub['overlap']}/{sub['prev_count']}）")
+        elif sub.get("prev_count"):
+            print(f"订阅: 新订阅（与已知订阅最高重叠 {sub['match']:.0%}，"
+                  f"已隔离时间轴）")
+        else:
+            print("订阅: 首次记录")
+        trend = load_trend(db_path, runs_limit=args.trend_runs)
         from .report.html import write_html
+        from .report.dashboard import write_dashboard
         write_html(reports, meta, hpath, trend)
-        hpath_str = str(hpath)
+        latest = write_dashboard(load_dashboard(db_path, args.trend_runs), outdir / "latest.html")
+        hpath_str = f"{hpath}\n      {latest}"
 
     geo_mark = {"match": "✓", "mismatch": "✗", "unknown": "?"}
 
@@ -246,7 +304,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="node-audit", description="Clash/mihomo 节点质量审计：IP 身份·纯净度·延迟·测速"
     )
-    parser.add_argument("--version", action="version", version="node-audit 0.4.1")
+    parser.add_argument("--version", action="version", version="node-audit 0.6.0")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_disc = sub.add_parser("discover", help="探测控制器并列出节点（只读，不做任何切换）")
@@ -281,11 +339,21 @@ def main(argv=None) -> int:
     p_aud.add_argument("--out", default="node-audit-report", help="报告输出目录（默认 ./node-audit-report）")
     p_aud.add_argument("--db", default=None,
                        help="历史趋势 SQLite 路径（默认 <out>/history.db）")
+    p_aud.add_argument("--trend-runs", type=int, default=30,
+                       help="HTML 趋势表保留最近 N 次审计（默认 30，约一个月每日）")
     p_aud.add_argument("--no-history", action="store_true",
                        help="不写入历史库、不生成 HTML 趋势报告")
     p_aud.add_argument("--dry-run", action="store_true", help="只列出将测的节点，不切换不检测")
     p_aud.add_argument("--yes", "-y", action="store_true", help="跳过切换前的确认提示")
     p_aud.set_defaults(func=cmd_audit)
+
+    p_srv = sub.add_parser("serve", help="在本机打开控制台页面（只监听 127.0.0.1）")
+    p_srv.add_argument("--out", default="node-audit-report", help="报告目录（默认 ./node-audit-report）")
+    p_srv.add_argument("--db", default=None, help="history.db 路径（默认 <out>/history.db）")
+    p_srv.add_argument("--port", type=int, default=8765, help="端口（默认 8765）")
+    p_srv.add_argument("--trend-runs", type=int, default=30, help="趋势窗口（默认 30）")
+    p_srv.add_argument("--open", action="store_true", help="启动后用系统浏览器打开")
+    p_srv.set_defaults(func=cmd_serve)
 
     args = parser.parse_args(argv)
     try:

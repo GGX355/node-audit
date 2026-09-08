@@ -1,5 +1,14 @@
 """顶层块抽取与临时配置拼装（isolated 模式的核心纯逻辑）。"""
-from node_audit.core.isolated import build_config, extract_top_level_block
+import socket
+
+from node_audit.core.isolated import (
+    _alloc_ports,
+    _close_holders,
+    build_config,
+    extract_top_level_block,
+    list_nodes_from_runtime,
+    parse_proxy_entries,
+)
 
 RUNTIME = """mode: rule
 mixed-port: 7897
@@ -80,3 +89,78 @@ def test_build_config_pins_names_and_ports():
     assert "unified-delay: true" in cfg
     # 内联 proxies 块原样保留
     assert "cipher: aes-128-gcm" in cfg
+
+
+def test_parse_proxy_entries_block_and_quotes():
+    block = extract_top_level_block(RUNTIME, "proxies")
+    entries = parse_proxy_entries(block)
+    assert entries == [("节点A|5x倍率", "ss"), ("节点B", "trojan")]
+
+
+def test_parse_zero_indent_and_flow():
+    cfg = (
+        "proxies:\n"
+        "- name: a\n"
+        "  type: ss\n"
+        "- { name: b, type: trojan, server: x, port: 443 }\n"
+        "rules:\n"
+        "  - MATCH,DIRECT\n"
+    )
+    block = extract_top_level_block(cfg, "proxies")
+    assert parse_proxy_entries(block) == [("a", "ss"), ("b", "trojan")]
+
+
+def test_parse_ignores_nested_name():
+    cfg = (
+        "proxies:\n"
+        "  - name: real\n"
+        "    type: ss\n"
+        "    plugin-opts:\n"
+        "      name: nested\n"
+        "      type: fake\n"
+    )
+    assert parse_proxy_entries(extract_top_level_block(cfg, "proxies")) == [("real", "ss")]
+
+
+def test_list_nodes_from_runtime_filters_pseudo():
+    text = (
+        "mode: rule\n"
+        "proxies:\n"
+        "  - name: 剩余流量：1 GB\n"
+        "    type: ss\n"
+        "  - name: 香港原生-1\n"
+        "    type: ss\n"
+        "  - name: 套餐到期：2027-01-01\n"
+        "    type: trojan\n"
+        "proxy-groups:\n"
+        "  - name: 组\n"
+        "    type: select\n"
+    )
+    nodes = list_nodes_from_runtime(text)
+    assert nodes == [("香港原生-1", "ss")]
+
+
+def test_list_nodes_empty_without_inline_proxies():
+    assert list_nodes_from_runtime("mode: rule\nproxy-providers: {}\n") == []
+
+
+def test_alloc_ports_holds_until_close():
+    ports, holders = _alloc_ports(2, 45123)
+    try:
+        assert len(ports) == 2 == len(holders)
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind(("127.0.0.1", ports[0]))
+            held = False
+        except OSError:
+            held = True
+        finally:
+            s.close()
+        assert held
+    finally:
+        _close_holders(holders)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", ports[0]))
+    finally:
+        s.close()

@@ -1,13 +1,12 @@
-"""自包含 HTML 报告（v0.4）：本次审计结果 + 跨次趋势视图。
-
-纯标准库（内联 CSS，无外部资源、无 JS），单文件可直接分享/存档。
-"""
+"""自包含表格 HTML 报告（归档用）。日常入口是控制台 latest.html（dashboard.py）。"""
 from __future__ import annotations
 
 import html
+import shutil
 from collections import Counter
 from pathlib import Path
 
+from ..core.history import enrich_trend
 from .output import _svc_md_text
 
 
@@ -28,10 +27,14 @@ table{border-collapse:collapse;width:100%;background:#fff;font-size:13px;box-sha
 th,td{border:1px solid #e3e8ee;padding:6px 9px;text-align:left;vertical-align:top}
 th{background:#eef2f6;white-space:nowrap}
 tr:hover td{background:#f4f8fd}
+tr.degraded td{background:#fdecea}
+tr.degraded:hover td{background:#f8d7da}
 .dc{color:#b3261e;font-weight:600}.res{color:#1a7f37;font-weight:600}
 .ok{color:#1a7f37}.bad{color:#b3261e}.warn{color:#b26a00}
 .trend{overflow-x:auto}
 .small{font-size:12px;color:#5b6b7b}
+.chg{display:inline-block;margin-left:4px;padding:0 5px;border-radius:3px;background:#fff3cd;color:#7a5b00;font-size:11px}
+.delta{font-size:11px;margin-left:4px}
 footer{margin-top:26px;color:#8a99a8;font-size:12px}
 """
 
@@ -49,10 +52,41 @@ def _status_class(status: str) -> str:
             "blocked": "bad", "none": "bad"}.get(status, "")
 
 
+def _fmt_delta(n, *, bad_when_up: bool) -> str:
+    """n>0 为升。bad_when_up=True 用于 RTT/风控（升=坏）；False 用于速度（降=坏）。"""
+    if n is None or n == 0:
+        return ""
+    sign = "+" if n > 0 else ""
+    bad = (n > 0) if bad_when_up else (n < 0)
+    cls = "bad" if bad else "ok"
+    return f" <span class='delta {cls}'>{sign}{n}</span>"
+
+
+def _trend_cell_html(cell: dict | None) -> str:
+    if not cell:
+        return "<td class='small'>未测</td>"
+    bits = []
+    if cell.get("rtt") is not None:
+        bits.append(f"RTT {cell['rtt']}{_fmt_delta(cell.get('rtt_delta'), bad_when_up=True)}")
+    if cell.get("speed") is not None:
+        bits.append(f"{cell['speed']}Mbps{_fmt_delta(cell.get('speed_delta'), bad_when_up=False)}")
+    if cell.get("exit_ip"):
+        ip = _e(cell["exit_ip"])
+        if cell.get("ip_changed"):
+            ip += "<span class='chg'>换</span>"
+        bits.append(ip)
+    if cell.get("risk_pct") is not None:
+        bits.append(f"风控 {cell['risk_pct']}%{_fmt_delta(cell.get('risk_delta'), bad_when_up=True)}")
+    v = cell.get("verdict") or "-"
+    bits.append(f"<span class='{_verdict_class(v)}'>{_e(v)}</span>")
+    return "<td>" + "<br>".join(bits) + "</td>"
+
+
 def render_html(reports, meta: dict, trend: tuple) -> str:
     """reports: [NodeReport]；meta: 含 run_id/generated_at/controller/mode；
     trend: (runs, rows) 来自 history.load_trend（含本次）。"""
     runs, rows = trend
+    rows = enrich_trend(runs, rows)
     counts = Counter(r.verdict for r in reports)
     ok_count = sum(1 for r in reports if not r.error)
     speeds = [r.speed_mbps for r in reports if r.speed_mbps is not None]
@@ -102,32 +136,26 @@ def render_html(reports, meta: dict, trend: tuple) -> str:
         parts.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
     parts.append("</table>")
 
-    # 跨次趋势：每个节点一行，每个 run 一列（RTT / 速度 / 出口IP / 判定）
+    # 跨次趋势：每个节点一行，每个 run 一列；变慢行置顶标红
     if runs:
+        n_slow = sum(1 for row in rows if row.get("degraded"))
         parts.append("<h2>历史趋势（含本次）</h2>")
-        parts.append(f"<p class='small'>最近 {len(runs)} 次审计，旧 → 新。"
-                     "RTT 单位 ms；未测 = 该次未覆盖此节点。同一节点出口 IP 变化（家宽轮换）直接可见。</p>")
+        parts.append(
+            f"<p class='small'>最近 {len(runs)} 次审计，旧 → 新。"
+            "「换」= 相对上次出口 IP 变了；风控 / RTT / 速度旁为相对上次的 Δ "
+            "（红=变差，绿=变好）。速度下降 ≥40% 或 RTT 翻倍的节点整行标红并置顶"
+            f"{f'（本次 {n_slow} 个）' if n_slow else ''}。"
+            "未测 = 该次未覆盖此节点。</p>"
+        )
         parts.append("<div class='trend'><table><tr><th>节点</th>")
         for run_id in runs:
             parts.append(f"<th>{_e(run_id)}</th>")
         parts.append("</tr>")
         for row in rows:
-            parts.append(f"<tr><td>{_e(row['node'])}</td>")
+            tr_cls = " class='degraded'" if row.get("degraded") else ""
+            parts.append(f"<tr{tr_cls}><td>{_e(row['node'])}</td>")
             for run_id in runs:
-                cell = row["cells"].get(run_id)
-                if not cell:
-                    parts.append("<td class='small'>未测</td>")
-                    continue
-                bits = []
-                if cell.get("rtt") is not None:
-                    bits.append(f"RTT {cell['rtt']}")
-                if cell.get("speed") is not None:
-                    bits.append(f"{cell['speed']}Mbps")
-                if cell.get("exit_ip"):
-                    bits.append(_e(cell["exit_ip"]))
-                v = cell.get("verdict") or "-"
-                bits.append(f"<span class='{_verdict_class(v)}'>{_e(v)}</span>")
-                parts.append("<td>" + "<br>".join(bits) + "</td>")
+                parts.append(_trend_cell_html(row["cells"].get(run_id)))
             parts.append("</tr>")
         parts.append("</table></div>")
     else:
@@ -141,3 +169,11 @@ def render_html(reports, meta: dict, trend: tuple) -> str:
 
 def write_html(reports, meta: dict, path, trend: tuple) -> None:
     Path(path).write_text(render_html(reports, meta, trend), encoding="utf-8")
+
+
+def publish_latest(html_path) -> Path:
+    """把本次 HTML 复制为同目录 latest.html（覆盖）。Windows 不用 symlink。"""
+    src = Path(html_path)
+    dest = src.parent / "latest.html"
+    shutil.copyfile(src, dest)
+    return dest

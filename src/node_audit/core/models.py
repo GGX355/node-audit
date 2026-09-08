@@ -15,6 +15,9 @@ class DeepCheck:
     ipqs: dict | None = None         # {available, fraud_score, proxy, vpn, tor}
     abuseipdb: dict | None = None    # {available, score, reports}
 
+    def to_dict(self) -> dict:
+        return asdict(self)
+
 
 @dataclass
 class NodeReport:

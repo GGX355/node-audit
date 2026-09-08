@@ -243,7 +243,10 @@ def check_ping0(proxy: str, timeout: float = 25) -> dict:
 
 
 def check_ipqs(ip: str | None, api_key: str, proxy: str, timeout: float = 15) -> dict:
-    """IPQualityScore 官方 API（免费 key：https://www.ipqualityscore.com）。"""
+    """IPQualityScore 官方 API（免费 key：https://www.ipqualityscore.com）。
+
+    直连本机网络，不把 API key 送进被测节点。`proxy` 保留以兼容调用方，忽略。
+    """
     out = {"available": False, "fraud_score": None, "proxy": None,
            "vpn": None, "tor": None}
     if not ip or not api_key:
@@ -251,7 +254,7 @@ def check_ipqs(ip: str | None, api_key: str, proxy: str, timeout: float = 15) ->
     url = (f"https://ipqualityscore.com/api/json/ip/{api_key}/{ip}"
            "?strictness=0&allow_public_access_points=true&fast=true")
     try:
-        status, data = http_get(url, proxy, timeout)
+        status, data = http_get(url, None, timeout)  # 直连；key 在 URL 路径里
         if status != 200:
             return out
         d = json.loads(data.decode())

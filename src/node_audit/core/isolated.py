@@ -1,9 +1,11 @@
 """isolated 模式：临时 mihomo 实例 + 每节点独立入站端口，零干扰。
 
-实现思路：从 Verge Rev 运行时配置里把 `proxies:` 顶层块**原样文本搬运**
-（不解析 YAML，零依赖、字节级保真），为每个节点生成一个绑定 127.0.0.1
+实现思路：从 Verge / Verge Rev 运行时配置里把 `proxies:` 顶层块**原样文本搬运**
+（拼配置时不解析 YAML，零依赖、字节级保真），为每个节点生成一个绑定 127.0.0.1
 的 mixed listener 并用 `proxy:` 字段钉住该节点，然后在本机拉起独立内核。
 用户正在运行的代理全程不受影响，因此也无需快照/还原。
+
+节点列表可以只从 yaml 的 `proxies:` 解析，不必连接正在跑的控制器（无人值守）。
 """
 from __future__ import annotations
 
@@ -19,37 +21,51 @@ import tempfile
 import time
 from pathlib import Path
 
+from .filters import is_real_node
 from .runner import _audit_one
 
 
+def core_binary_candidates() -> list[Path]:
+    """内核搜索路径（显式指定与 PATH 之外），Rev / 非 Rev 都覆盖。"""
+    candidates: list[Path] = []
+    exe_win = ("verge-mihomo.exe", "clash-meta.exe", "mihomo.exe")
+    exe_unix = ("verge-mihomo", "clash-meta", "mihomo")
+    if sys.platform == "win32":
+        la = Path(os.environ.get("LOCALAPPDATA", ""))
+        pf = Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+        dirs = [
+            la / "Programs" / "Clash Verge",
+            la / "Programs" / "clash-verge",
+            la / "Programs" / "Clash Verge Rev",
+            la / "Programs" / "clash-verge-rev",
+            pf / "Clash Verge",
+            pf / "Clash Verge Rev",
+        ]
+        for d in dirs:
+            for exe in exe_win:
+                candidates.append(d / exe)
+    elif sys.platform == "darwin":
+        for app in ("Clash Verge.app", "Clash Verge Rev.app"):
+            mac = Path("/Applications") / app / "Contents" / "MacOS"
+            for exe in exe_unix:
+                candidates.append(mac / exe)
+    else:
+        for d in (Path("/usr/lib/clash-verge"), Path("/opt/clash-verge"),
+                  Path("/usr/lib/clash-verge-rev"), Path("/opt/clash-verge-rev")):
+            for exe in exe_unix:
+                candidates.append(d / exe)
+    return candidates
+
+
 def find_core_binary(explicit: str | None = None) -> str | None:
-    """定位 mihomo 内核：显式指定 > PATH > Clash Verge 安装目录。"""
+    """定位 mihomo 内核：显式指定 > PATH > Clash Verge / Verge Rev 安装目录。"""
     if explicit:
         return explicit if Path(explicit).is_file() else None
-    for name in ("mihomo", "verge-mihomo"):
+    for name in ("mihomo", "verge-mihomo", "clash-meta"):
         p = shutil.which(name)
         if p:
             return p
-    candidates: list[Path] = []
-    if sys.platform == "win32":
-        la = Path(os.environ.get("LOCALAPPDATA", ""))
-        candidates += [
-            la / "Programs" / "Clash Verge" / "verge-mihomo.exe",
-            la / "Programs" / "clash-verge" / "verge-mihomo.exe",
-            Path("C:/Program Files/Clash Verge/verge-mihomo.exe"),
-            Path("C:/Program Files/Clash Verge Rev/verge-mihomo.exe"),
-        ]
-    elif sys.platform == "darwin":
-        candidates += [
-            Path("/Applications/Clash Verge.app/Contents/MacOS/verge-mihomo"),
-            Path("/Applications/Clash Verge Rev.app/Contents/MacOS/verge-mihomo"),
-        ]
-    else:
-        candidates += [
-            Path("/usr/lib/clash-verge/verge-mihomo"),
-            Path("/opt/clash-verge/verge-mihomo"),
-        ]
-    for c in candidates:
+    for c in core_binary_candidates():
         if c.is_file():
             return str(c)
     return None
@@ -70,20 +86,109 @@ def extract_top_level_block(text: str, key: str) -> str | None:
     return m.group(0) if m else None
 
 
-def _alloc_ports(count: int, base: int) -> list[int]:
+def _scalar(v: str) -> str:
+    """YAML 标量：去掉行内注释与一层引号。"""
+    v = re.split(r"\s+#", v, maxsplit=1)[0].strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+        v = v[1:-1]
+    return v
+
+
+def _parse_flow_item(s: str) -> tuple[str, str] | None:
+    """`{ name: foo, type: ss, ... }` 单行 flow。"""
+    inner = s.strip()
+    if inner.startswith("{"):
+        inner = inner[1:]
+    if "}" in inner:
+        inner = inner[: inner.index("}")]
+    nm = re.search(r"\bname:\s*([^,}]+)", inner)
+    tp = re.search(r"\btype:\s*([^,}]+)", inner)
+    if not nm:
+        return None
+    return _scalar(nm.group(1)), _scalar(tp.group(1)) if tp else ""
+
+
+def parse_proxy_entries(proxies_block: str) -> list[tuple[str, str]]:
+    """从 `proxies:` 块抽出 [(name, type), ...]。只读顶层键，不解析嵌套。
+
+    支持 Verge 常见的块列表（含零缩进 `- `）和简单 `{ name, type }` flow。
+    """
+    items = re.split(r"(?m)^[ \t]*-[ \t]+", proxies_block)
+    out: list[tuple[str, str]] = []
+    for item in items[1:]:
+        stripped = item.lstrip()
+        if stripped.startswith("{"):
+            parsed = _parse_flow_item(stripped.split("\n", 1)[0])
+            if parsed and parsed[0]:
+                out.append(parsed)
+            continue
+        name = ptype = None
+        first_key_line = True
+        sibling_indent = None
+        for raw in item.splitlines():
+            line = raw.rstrip()
+            if not line.strip() or line.strip().startswith("#"):
+                continue
+            indent = len(line) - len(line.lstrip(" \t"))
+            if first_key_line:
+                # `- name: foo` 被切开后，name 在余下行列 0；后续兄弟键缩进更深
+                first_key_line = False
+            else:
+                if sibling_indent is None:
+                    sibling_indent = indent
+                if indent != sibling_indent:
+                    continue
+            m = re.match(r"([A-Za-z0-9_-]+)[ \t]*:[ \t]*(.*)$", line.strip())
+            if not m:
+                continue
+            key, val = m.group(1), m.group(2)
+            if key == "name" and name is None:
+                name = _scalar(val)
+            elif key == "type" and ptype is None:
+                ptype = _scalar(val)
+        if name:
+            out.append((name, ptype or ""))
+    return out
+
+
+def list_nodes_from_runtime(text: str) -> list[tuple[str, str]]:
+    """从运行时配置文本列出真实节点，不连控制器。无内联 proxies 则返回空。"""
+    block = extract_top_level_block(text, "proxies")
+    if not block:
+        return []
+    return [(n, t) for n, t in parse_proxy_entries(block) if is_real_node(n, t)]
+
+
+def _alloc_ports(count: int, base: int) -> tuple[list[int], list[socket.socket]]:
+    """分配端口并保持 bind，直到内核启动前一刻才释放，缩小 TOCTOU 窗口。"""
     ports: list[int] = []
+    holders: list[socket.socket] = []
     p = base
     while len(ports) < count:
         if p > base + 2000:
+            for s in holders:
+                s.close()
             raise RuntimeError(f"从 {base} 起连续 2000 个端口均不可用")
-        with socket.socket() as s:
-            try:
-                s.bind(("127.0.0.1", p))
-                ports.append(p)
-            except OSError:
-                pass
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind(("127.0.0.1", p))
+        except OSError:
+            s.close()
+            p += 1
+            continue
+        ports.append(p)
+        holders.append(s)
         p += 1
-    return ports
+    return ports, holders
+
+
+def _close_holders(holders: list[socket.socket]) -> None:
+    for s in holders:
+        try:
+            s.close()
+        except OSError:
+            pass
+    holders.clear()
 
 
 def build_config(proxies_block: str, names: list[str], ports: list[int],
@@ -128,7 +233,8 @@ class IsolatedCore:
     """独立内核进程的生命周期管理（配置文件/日志/启停均放在临时目录）。"""
 
     def __init__(self, core_bin: str, config_text: str, ports: list[int],
-                 ctrl_port: int, ctrl_secret: str, log=print):
+                 ctrl_port: int, ctrl_secret: str, log=print,
+                 holders: list | None = None):
         self.core_bin = core_bin
         self.config_text = config_text
         self.ports = ports
@@ -139,6 +245,7 @@ class IsolatedCore:
         self.api = None  # 内核控制器客户端，start 成功后可用
         self._tmpdir: str | None = None
         self._errfh = None
+        self._holders: list = list(holders or [])
 
     def __enter__(self) -> "IsolatedCore":
         self.start()
@@ -171,6 +278,8 @@ class IsolatedCore:
         errpath = Path(self._tmpdir) / "core-stderr.log"
         self._errfh = open(errpath, "wb")
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        # 占住端口直到内核即将启动，释放后立刻 Popen，缩小被抢窗口
+        _close_holders(self._holders)
         self.proc = subprocess.Popen(
             [self.core_bin, "-d", self._tmpdir, "-f", str(cfgpath)],
             stdout=subprocess.DEVNULL, stderr=self._errfh,
@@ -205,6 +314,7 @@ class IsolatedCore:
         raise RuntimeError("独立内核 listener 25 秒内未就绪（查看临时目录 core-stderr.log）")
 
     def stop(self) -> None:
+        _close_holders(self._holders)
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
             try:
@@ -231,15 +341,17 @@ def run_isolated(targets: list, opts, core_bin: str, log=print) -> list:
             "isolated 模式暂不支持，请改用 attach 模式"
         )
     names = [n for n, _ in targets]
-    ports = _alloc_ports(len(names) + 1, opts.port_base)  # 第一个端口留给控制器
-    ctrl_port, node_ports = ports[0], ports[1:]
-    ctrl_secret = secrets.token_hex(8)
-    cfg = build_config(block, names, node_ports, ctrl_port, ctrl_secret)
-
-    log(f"[isolated] 内核: {core_bin} | 节点端口 {node_ports[0]}-{node_ports[-1]} | 独立实例，不影响当前代理")
+    holders: list = []
     results: list[NodeReport] = []
     try:
-        with IsolatedCore(core_bin, cfg, node_ports, ctrl_port, ctrl_secret, log) as core:
+        ports, holders = _alloc_ports(len(names) + 1, opts.port_base)  # 第一个端口留给控制器
+        ctrl_port, node_ports = ports[0], ports[1:]
+        ctrl_secret = secrets.token_hex(8)
+        cfg = build_config(block, names, node_ports, ctrl_port, ctrl_secret)
+
+        log(f"[isolated] 内核: {core_bin} | 节点端口 {node_ports[0]}-{node_ports[-1]} | 独立实例，不影响当前代理")
+        with IsolatedCore(core_bin, cfg, node_ports, ctrl_port, ctrl_secret, log,
+                          holders=holders) as core:
             opts.delay_fn = make_delay_fn(core.api)
             port_map = dict(zip(names, node_ports))
             total = len(targets)
@@ -251,4 +363,6 @@ def run_isolated(targets: list, opts, core_bin: str, log=print) -> list:
     except KeyboardInterrupt:
         log(f"[isolated] 已中断：返回已完成 {len(results)}/{len(targets)} 个节点的部分报告")
         return results
+    finally:
+        _close_holders(holders)
     return results
