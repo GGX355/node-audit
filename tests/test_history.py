@@ -13,7 +13,7 @@ from node_audit.core.history import (
     save_run,
 )
 from node_audit.core.models import DeepCheck, NodeReport
-from node_audit.report.html import publish_latest, render_html, write_html
+from node_audit.report.html import publish_latest, render_html, run_label, write_html
 
 
 def _rep(name, rtt=50, speed=10.0, hosting=False, run_ip="36.227.213.17", run_ip6=None):
@@ -153,6 +153,22 @@ def test_idempotent_same_run_id():
         assert rows[0]["cells"]["run1"]["rtt"] == 2  # 以最后一次为准，不重复累积
 
 
+def test_run_label_formats_timestamp_ids():
+    assert run_label("20260908-041200") == "09-08 04:12"
+    assert run_label("run1") == "run1"
+    assert run_label("") == ""
+
+
+def test_html_trend_headers_use_dates():
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "history.db")
+        rid = "20260908-041200"
+        save_run([_rep("节点A")], _meta(rid, "2026-09-08T04:12:00"), db)
+        html = render_html([_rep("节点A")], _meta(rid, "2026-09-08T04:12:00"), load_trend(db))
+        assert "09-08 04:12" in html
+        assert "<th>PTR</th>" in html
+
+
 def test_html_renders_and_escapes():
     with tempfile.TemporaryDirectory() as td:
         db = os.path.join(td, "history.db")
@@ -163,6 +179,7 @@ def test_html_renders_and_escapes():
         html = render_html(reports, _meta("run1", "2026-01-01T00:00:00"), trend)
         assert "本次明细" in html and "历史趋势（含本次）" in html
         assert "run1" in html
+        assert "<th>PTR</th>" in html
         # 节点名中的 HTML 被转义，不能出现可执行的 <script>
         assert "<script>alert(1)</script>" not in html
         assert "&lt;script&gt;" in html

@@ -2,7 +2,7 @@
 
 仓库：https://github.com/GGX355/node-audit  
 分支：`main`  
-当前代码版本：**0.8.0**（一键 exe + v0.7 IPv6）
+当前代码版本：**0.9.0**（控制台日期刻度 + CSV）
 
 下载给用户用的程序：GitHub **Releases** 里的 `node-audit.exe`（不要从源码树里找，exe 不进 git）。
 
@@ -24,7 +24,7 @@ git clone https://github.com/GGX355/node-audit.git
 cd node-audit
 $env:PYTHONPATH='src'
 python tests/run_all.py          # 应全部 passed
-python -m node_audit --version   # node-audit 0.8.0
+python -m node_audit --version   # node-audit 0.9.0
 ```
 
 打包：
@@ -42,12 +42,15 @@ powershell -ExecutionPolicy Bypass -File scripts\build-exe.ps1
 
 **v0.7** IPv6 出口审计（双栈、ip6.arpa、schema v3、isolated `ipv6: true`）。计划书 [`PLAN-v0.7-ipv6.md`](PLAN-v0.7-ipv6.md)。
 
-**v0.8**
+**v0.8** 一键 exe（菜单 / ini / 日志 / Releases）。
 
-- 无参数 / 双击 = `run`：菜单 + `node-audit.ini` + 日志 + 打开报告
-- `run --yes` 给计划任务
-- PyInstaller 单文件控制台 exe
-- Releases workflow
+**v0.9**
+
+- 控制台折线日期刻度 + 点上悬停日期
+- IP 时间轴显示日期
+- 身份卡补 PTR / ASN / RDAP / 类型
+- 导出 CSV
+- 归档 HTML 趋势表头改成月-日 时:分
 
 ---
 
@@ -64,8 +67,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build-exe.ps1
 ## 下一刀
 
 1. **不要开 Go 重写**
-2. 可选：sparkline 日期刻度
-3. 把本机打出来的 exe 挂到 GitHub Release `v0.8.0`（若 Actions 没跑）
+2. 路线图已清空。proxy-providers 的 isolated 支持仍是已知限制，不是这轮范围。
 
 ---
 

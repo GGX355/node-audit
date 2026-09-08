@@ -6,7 +6,7 @@
 
 | 原 v1.0 条目 | 现状 | 本轮 |
 |---|---|---|
-| SVG 趋势图 | 控制台已有 RTT / 速度 / 风控 SVG sparkline + IP 时间轴 | 不做新系统；以后最多补日期刻度 |
+| SVG 趋势图 | 控制台已有 RTT / 速度 / 风控 SVG sparkline + IP 时间轴 | 不做新系统；日期刻度在 v0.9 |
 | IPv6 出口审计 | **未做**：ip-api 只认 v4；PTR 只处理带 `.` 的地址；isolated 写死 `ipv6: false` | **这就是下一刀** |
 | Go 重写单二进制 | 等于整仓重写 | **不做**。要 exe 用 PyInstaller 打包现有 Python |
 
@@ -61,4 +61,4 @@ PTR：v4 保持 `in-addr.arpa`；v6 按 RFC 3596 展开到 `ip6.arpa`。
 
 - 单二进制：`pyinstaller -F` 出 `node-audit.exe`（可选）
 - Go：真要做再单独立项
-- SVG 大图：给 sparkline 加日期刻度即可
+- SVG 大图：给 sparkline 加日期刻度即可（v0.9 已做）

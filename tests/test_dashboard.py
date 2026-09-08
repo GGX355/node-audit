@@ -15,6 +15,8 @@ def _rep(name, rtt=50, speed=10.0, hosting=False, run_ip="36.227.213.17",
     r.exit_ip6 = run_ip6
     r.country_code, r.country, r.city = "TW", "Taiwan", "Taipei"
     r.isp, r.asn = "Chunghwa Telecom", "AS3462"
+    r.ptr = "36-227-213-17.hinet.net"
+    r.rdap_org = "Chunghwa Telecom"
     r.hosting = hosting
     r.rtt = {"gstatic": rtt, "cloudflare": rtt}
     r.rtt_min = rtt
@@ -71,6 +73,9 @@ def test_load_dashboard_kpis_and_series():
         assert home["series"]["risk"] == [7, 18]
         assert home["latest"]["exit_ip"] == "36.2.2.2"
         assert home["latest"]["exit_ip6"] == "2001:db8::2"
+        assert home["latest"]["asn"] == "AS3462"
+        assert home["latest"]["ptr"] == "36-227-213-17.hinet.net"
+        assert home["latest"]["rdap_org"] == "Chunghwa Telecom"
         assert payload["nodes"][0]["degraded"] is True  # 变慢置顶
         assert home["in_latest"] is True
 
@@ -98,7 +103,12 @@ def test_dashboard_html_landmarks_and_xss():
     assert "id='na-data'" in html
     assert "demo-banner" in html
     assert "function spark" in html
+    assert "spark-axis" in html
+    assert "function fmtDay" in html
+    assert "导出 CSV" in html
+    assert "downloadCsv" in html
     assert "出口 v4" in html and "出口 v6" in html
+    assert "<b>PTR</b>" in html and "<b>ASN</b>" in html
     assert "series.ip6" in html
     assert "<script>alert(1)</script>" not in html
     assert "\\u003cscript\\u003e" in html

@@ -14,6 +14,14 @@ def _e(v) -> str:
     return html.escape(str(v if v is not None else "-"), quote=True)
 
 
+def run_label(run_id) -> str:
+    """20260908-041200 → 09-08 04:12，其它原样。"""
+    s = str(run_id or "")
+    if len(s) >= 15 and s[8] == "-" and s[:8].isdigit() and s[9:15].isdigit():
+        return f"{s[4:6]}-{s[6:8]} {s[9:11]}:{s[11:13]}"
+    return s
+
+
 _CSS = """
 body{font-family:"Microsoft YaHei",system-ui,sans-serif;margin:0;background:#f5f6f8;color:#1c2733}
 .wrap{max-width:1200px;margin:0 auto;padding:24px}
@@ -119,7 +127,7 @@ def render_html(reports, meta: dict, trend: tuple) -> str:
         "".join(f"<tr><td>{_e(k)}</td><td>{v}</td></tr>" for k, v in counts.most_common()),
         "</table>",
         "<h2>本次明细</h2><table>",
-        "<tr><th>节点</th><th>预期</th><th>出口IP</th><th>归属</th><th>ISP</th><th>类型</th>"
+        "<tr><th>节点</th><th>预期</th><th>出口IP</th><th>归属</th><th>ISP</th><th>PTR</th><th>类型</th>"
         "<th>RTT(ms)</th><th>速度 Mbps</th><th>一致性</th><th>服务</th><th>判定</th><th>备注</th></tr>",
     ]
     for r in reports:
@@ -131,6 +139,7 @@ def render_html(reports, meta: dict, trend: tuple) -> str:
                                     _e(r.exit_ip6) if r.exit_ip6 else "") if p) or "-",
             _e(f"{r.country_code or '-'} {r.city or ''}".strip()),
             _e(r.isp or "-"),
+            _e(r.ptr or "-"),
             "<span class='dc'>机房</span>" if r.hosting is True
             else "<span class='res'>住宅</span>" if r.hosting is False else "-",
             _e(r.rtt_min if r.rtt_min is not None else "-"),
@@ -156,7 +165,7 @@ def render_html(reports, meta: dict, trend: tuple) -> str:
         )
         parts.append("<div class='trend'><table><tr><th>节点</th>")
         for run_id in runs:
-            parts.append(f"<th>{_e(run_id)}</th>")
+            parts.append(f"<th>{_e(run_label(run_id))}</th>")
         parts.append("</tr>")
         for row in rows:
             tr_cls = " class='degraded'" if row.get("degraded") else ""

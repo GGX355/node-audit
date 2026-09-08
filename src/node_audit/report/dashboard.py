@@ -40,6 +40,11 @@ header.top{
   background:linear-gradient(135deg,#7aa2ff,#3dd68c);box-shadow:0 0 0 1px rgba(255,255,255,.2) inset}
 .brand{font-weight:650;letter-spacing:.02em}
 .meta{margin-left:auto;color:var(--muted);font-size:12px}
+.csv{
+  border:1px solid var(--stroke);background:transparent;color:var(--muted);
+  border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer
+}
+.csv:hover{color:var(--text);border-color:rgba(122,162,255,.55)}
 .body{display:grid;grid-template-columns:280px 1fr;min-height:0;flex:1}
 aside.side{
   border-right:1px solid var(--stroke);background:rgba(18,20,26,.72);
@@ -91,10 +96,19 @@ main.main{overflow:auto;padding:16px 18px 28px;display:flex;flex-direction:colum
 .svc span{font-size:12px;border:1px solid var(--stroke);border-radius:8px;padding:3px 8px;color:var(--muted)}
 .svc .ok{color:var(--ok)}.svc .bad{color:var(--bad)}.svc .warn{color:var(--warn)}
 svg.spark{width:100%;height:72px;display:block}
-.ipflow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.ip{font-variant-numeric:tabular-nums;font-size:13px;padding:4px 8px;border-radius:8px;
+.spark-wrap{position:relative}
+.spark-axis{position:relative;height:16px;margin-top:2px;color:var(--muted);
+  font-size:10px;font-variant-numeric:tabular-nums}
+.spark-axis i{position:absolute;top:0;white-space:nowrap;font-style:normal;transform:translateX(-50%)}
+.spark-axis i:first-child{transform:none}
+.spark-axis i:last-child{transform:translateX(-100%)}
+.spark-axis i:first-child:last-child{transform:none}
+.ipflow{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
+.ip{display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;
+  font-variant-numeric:tabular-nums;font-size:13px;padding:4px 8px;border-radius:8px;
   border:1px solid var(--stroke);color:var(--text)}
 .ip.chg{border-color:rgba(255,193,74,.5);background:rgba(255,193,74,.12)}
+.ip .when{font-size:10px;color:var(--muted)}
 .chg-tag{font-size:11px;color:var(--warn);margin-left:4px}
 .empty{color:var(--muted);padding:40px;text-align:center}
 .hint{color:var(--muted);font-size:11px;padding:8px 12px}
@@ -143,6 +157,27 @@ _JS = r"""
   }
   function list(){ return (data.nodes||[]).filter(match); }
 
+  function fmtDay(at){
+    if (!at) return "";
+    var s = String(at);
+    var m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[2]+"-"+m[3];
+    m = s.match(/^(\d{4})(\d{2})(\d{2})/);
+    if (m) return m[2]+"-"+m[3];
+    return s.slice(0,10);
+  }
+  function runAt(i){
+    var r = (data.runs||[])[i] || {};
+    return r.at || r.id || "";
+  }
+  function tickIdx(n){
+    if (n<=0) return [];
+    if (n<=3){ var a=[]; for (var i=0;i<n;i++) a.push(i); return a; }
+    var raw=[0, Math.round((n-1)/3), Math.round(2*(n-1)/3), n-1], out=[], seen={};
+    raw.forEach(function(i){ if (!seen[i]){ seen[i]=1; out.push(i); } });
+    return out;
+  }
+
   function spark(values, color){
     var nums = (values||[]).map(function(v){ return v==null||v==="" ? null : Number(v); });
     var finite = nums.filter(function(v){ return v!=null && !isNaN(v); });
@@ -156,7 +191,7 @@ _JS = r"""
       if (v==null || isNaN(v)) return;
       var x = p + (i/Math.max(n-1,1))*(w-p*2);
       var y = h-p - ((v-min)/span)*(h-p*2);
-      pts.push([x,y]);
+      pts.push([x,y,i,v]);
     });
     if (!pts.length) return "";
     var d = pts.map(function(pt,i){ return (i?"L":"M")+pt[0].toFixed(1)+","+pt[1].toFixed(1); }).join(" ");
@@ -164,11 +199,26 @@ _JS = r"""
       pts.map(function(pt){ return "L"+pt[0].toFixed(1)+","+pt[1].toFixed(1); }).join(" ")+
       " L"+pts[pts.length-1][0].toFixed(1)+","+(h-p)+" Z";
     var last = finite[finite.length-1];
-    return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none">'
+    var lastI = pts[pts.length-1];
+    var dots = pts.map(function(pt){
+      var when = fmtDay(runAt(pt[2]));
+      var r = (pt[2]===lastI[2]) ? 3 : 2;
+      return '<circle cx="'+pt[0].toFixed(1)+'" cy="'+pt[1].toFixed(1)+'" r="'+r+'" fill="'+color+'">'
+        +'<title>'+esc(when)+(when?" ":"")+esc(pt[3])+'</title></circle>';
+    }).join("");
+    var ticks = tickIdx(n).map(function(i){
+      var left = (i/Math.max(n-1,1))*100;
+      return '<i style="left:'+left.toFixed(2)+'%">'+esc(fmtDay(runAt(i))||(i+1))+'</i>';
+    }).join("");
+    var lastWhen = fmtDay(runAt(n-1));
+    return '<div class="spark-wrap"><svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none">'
       +'<path d="'+fill+'" fill="'+color+'" opacity=".12"/>'
       +'<path d="'+d+'" fill="none" stroke="'+color+'" stroke-width="1.8" stroke-linejoin="round"/>'
-      +'<circle cx="'+pts[pts.length-1][0].toFixed(1)+'" cy="'+pts[pts.length-1][1].toFixed(1)+'" r="3" fill="'+color+'"/>'
-      +'</svg><div class="hint" style="padding:0">末次 '+esc(last)+(min!==max ? ' · 范围 '+esc(min)+'–'+esc(max) : '')+'</div>';
+      +dots
+      +'</svg><div class="spark-axis">'+ticks+'</div></div>'
+      +'<div class="hint" style="padding:0">末次 '+esc(last)+(lastWhen?" · "+esc(lastWhen):"")
+      +(min!==max ? ' · 范围 '+esc(min)+'–'+esc(max) : '')
+      +' · '+esc(finite.length)+'/'+esc(n)+' 次</div>';
   }
 
   function ipFlow(series, runs){
@@ -185,14 +235,16 @@ _JS = r"""
       var ip = ips[i], ip6 = ip6s[i];
       if (ip) {
         var chg4 = prev4 && prev4!==ip;
-        html += '<span class="ip'+(chg4?" chg":"")+'" title="v4 '+esc(when)+'">'+esc(ip)
-          +(chg4?'<span class="chg-tag">换</span>':'')+'</span>';
+        html += '<span class="ip'+(chg4?" chg":"")+'" title="v4 '+esc(when)+'"><span>'+esc(ip)
+          +(chg4?'<span class="chg-tag">换</span>':'')+'</span>'
+          +(when?'<span class="when">'+esc(fmtDay(when))+'</span>':'')+'</span>';
         prev4=ip;
       }
       if (ip6) {
         var chg6 = prev6 && prev6!==ip6;
-        html += '<span class="ip'+(chg6?" chg":"")+'" title="v6 '+esc(when)+'">'+esc(ip6)
-          +(chg6?'<span class="chg-tag">换</span>':'')+'</span>';
+        html += '<span class="ip'+(chg6?" chg":"")+'" title="v6 '+esc(when)+'"><span>'+esc(ip6)
+          +(chg6?'<span class="chg-tag">换</span>':'')+'</span>'
+          +(when?'<span class="when">'+esc(fmtDay(when))+'</span>':'')+'</span>';
         prev6=ip6;
       }
     }
@@ -250,6 +302,10 @@ _JS = r"""
       +'<div><b>出口 v6</b>'+esc(L.exit_ip6||"—")+'</div>'
       +'<div><b>归属</b>'+esc([L.country,L.city].filter(Boolean).join(" ")||"—")+'</div>'
       +'<div><b>ISP</b>'+esc(L.isp||"—")+'</div>'
+      +'<div><b>ASN</b>'+esc(L.asn||"—")+'</div>'
+      +'<div><b>PTR</b>'+esc(L.ptr||"—")+'</div>'
+      +'<div><b>RDAP</b>'+esc(L.rdap_org||"—")+'</div>'
+      +'<div><b>类型</b>'+esc(L.hosting===true?"机房":(L.hosting===false?"住宅":"—"))+'</div>'
       +'<div><b>地区预期</b>'+esc(n.region||"—")+'</div>'
       +'<div><b>RTT</b>'+esc(L.rtt==null?"—":L.rtt+" ms")+'</div>'
       +'<div><b>速度</b>'+esc(L.speed==null?"—":L.speed+" Mbps")+'</div>'
@@ -280,6 +336,29 @@ _JS = r"""
     renderKpis(); renderList(); renderDetail();
   }
 
+  function csvCell(s){
+    s = String(s==null?"":s);
+    if (/[",\n]/.test(s)) return '"'+s.replace(/"/g,'""')+'"';
+    return s;
+  }
+  function downloadCsv(){
+    var rows = [["节点","判定","出口v4","出口v6","国家","城市","ISP","ASN","PTR","RTT","速度","风控","一致性"]];
+    (data.nodes||[]).forEach(function(n){
+      if (n.in_latest===false) return;
+      var L=n.latest||{};
+      rows.push([n.name, n.verdict, L.exit_ip, L.exit_ip6, L.country, L.city,
+        L.isp, L.asn, L.ptr, L.rtt, L.speed, L.risk_pct, L.geo_match]);
+    });
+    var text = rows.map(function(r){ return r.map(csvCell).join(","); }).join("\n");
+    var blob = new Blob(["\ufeff"+text], {type:"text/csv;charset=utf-8"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "node-audit-"+(data.meta&&data.meta.run_id||"export")+".csv";
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+  }
+  var csvBtn = $("csv");
+  if (csvBtn) csvBtn.addEventListener("click", downloadCsv);
   $("q").addEventListener("input", function(e){ q=e.target.value; render(); });
   document.querySelectorAll(".chips button").forEach(function(btn){
     btn.addEventListener("click", function(){
@@ -314,7 +393,8 @@ def render_dashboard(payload: dict) -> str:
         f"<style>{_CSS}</style></head><body>"
         "<div id='na-app'>"
         "<header class='top'><i class='mark'></i><span class='brand'>node-audit</span>"
-        "<span class='meta' id='meta'></span></header>"
+        "<span class='meta' id='meta'></span>"
+        "<button class='csv' id='csv' type='button'>导出 CSV</button></header>"
         "<div id='demo-banner' class='demo'>演示数据，不是你的订阅。"
         "跑 <code>node-audit audit --mode isolated --yes</code> 之后打开 "
         "<code>node-audit-report/latest.html</code> 才是当前订阅的全量节点。</div>"
@@ -378,7 +458,9 @@ def demo_payload() -> dict:
                 "latest": {
                     "exit_ip": "36.2.2.2", "exit_ip6": "2001:db8:1::2",
                     "country": "TW", "city": "Taipei",
-                    "isp": "Chunghwa Telecom", "rtt": 90, "speed": 20.0,
+                    "isp": "Chunghwa Telecom", "asn": "AS3462",
+                    "ptr": "36-2-2-2.hinet.net", "rdap_org": "Chunghwa Telecom",
+                    "rtt": 90, "speed": 20.0,
                     "risk_pct": 18, "hosting": False, "geo_match": "match",
                     "services": {
                         "openai": {"status": "ok", "region": "TW"},
@@ -405,7 +487,10 @@ def demo_payload() -> dict:
                 "latest": {
                     "exit_ip": "52.196.115.92", "exit_ip6": "2001:db8:2::52",
                     "country": "JP", "city": "Tokyo",
-                    "isp": "Amazon", "rtt": 80, "speed": 95.8,
+                    "isp": "Amazon", "asn": "AS16509",
+                    "ptr": "ec2-52-196-115-92.ap-northeast-1.compute.amazonaws.com",
+                    "rdap_org": "Amazon Technologies",
+                    "rtt": 80, "speed": 95.8,
                     "risk_pct": None, "hosting": True, "geo_match": "match",
                     "services": {
                         "openai": {"status": "ok"},
@@ -432,7 +517,9 @@ def demo_payload() -> dict:
                 "latest": {
                     "exit_ip": "14.0.1.8", "exit_ip6": None,
                     "country": "HK", "city": "Hong Kong",
-                    "isp": "HGC", "rtt": 28, "speed": 22.4,
+                    "isp": "HGC", "asn": "AS9304",
+                    "ptr": None, "rdap_org": "HGC",
+                    "rtt": 28, "speed": 22.4,
                     "risk_pct": 4, "hosting": False, "geo_match": "match",
                     "services": {
                         "openai": {"status": "ok", "region": "HK"},

@@ -197,7 +197,7 @@ python tests/run_all.py   # 零依赖
 - [x] v0.6 控制台页面：侧栏 + KPI + SVG 折线时间轴；`node-audit serve`；`latest.html` 改为软件壳；订阅 90% 重叠隔离
 - [x] v0.7 IPv6 出口审计：双栈探测、`ip6.arpa` PTR、schema v3 `exit_ip6`；仅 v6 不再因 ip-api 失败判死（见 [`docs/PLAN-v0.7-ipv6.md`](docs/PLAN-v0.7-ipv6.md)）
 - [x] v0.8 一键程序：双击 `node-audit.exe`、`node-audit.ini`、日志、跑完打开报告；GitHub Releases 提供 exe（见 [`docs/PLAN-v0.8-app.md`](docs/PLAN-v0.8-app.md)）
-- [ ] 可选：控制台 sparkline 日期刻度
+- [x] v0.9 控制台日期刻度；折线点悬停显示日期；IP 时间轴带日期；身份卡补 PTR/ASN/RDAP；导出 CSV；归档表日期表头
 
 原 README 把 v1.0 写成「SVG 趋势图 + IPv6 + Go 单二进制」三件事。SVG 已在 v0.6 控制台里；Go 重写**不做**（要 exe 用 PyInstaller）。
 

@@ -429,7 +429,7 @@ def load_dashboard(db_path, runs_limit: int = 30) -> dict:
         result_rows = conn.execute(
             f"""SELECT node_name, run_id, rtt_min, speed_mbps, verdict, exit_ip, exit_ip6,
                        risk_pct, country_code, city, isp, hosting, geo_match,
-                       services, notes, error, node_type
+                       services, notes, error, node_type, ptr, asn, rdap_org
                 FROM results WHERE run_id IN ({marks})""",
             run_ids,
         ).fetchall()
@@ -440,7 +440,8 @@ def load_dashboard(db_path, runs_limit: int = 30) -> dict:
     trend_rows_map: dict[str, dict] = {}
     for row in result_rows:
         (name, run_id, rtt, speed, verdict, exit_ip, exit_ip6, risk_pct,
-         cc, city, isp, hosting, geo_match, services, notes, error, ntype) = row
+         cc, city, isp, hosting, geo_match, services, notes, error, ntype,
+         ptr, asn, rdap_org) = row
         trend_rows_map.setdefault(name, {"node": name, "cells": {}})
         trend_rows_map[name]["cells"][run_id] = {
             "rtt": rtt, "speed": speed, "verdict": verdict,
@@ -454,6 +455,9 @@ def load_dashboard(db_path, runs_limit: int = 30) -> dict:
             "country": cc,
             "city": city,
             "isp": isp,
+            "asn": asn,
+            "ptr": ptr,
+            "rdap_org": rdap_org,
             "rtt": rtt,
             "speed": speed,
             "risk_pct": risk_pct,
