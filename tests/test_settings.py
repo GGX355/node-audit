@@ -73,6 +73,48 @@ def test_load_settings_missing_file():
     assert s.open_report is True
 
 
+def test_cmd_run_menu_open_report_then_audit_then_quit():
+    import builtins
+    import node_audit.cli as cli
+
+    orig_audit = cli.cmd_audit
+    orig_open = cli._open_html
+    orig_input = builtins.input
+    orig_inter = cli._interactive
+    calls = []
+    answers = iter(["2", "1", "q"])
+
+    def fake_audit(ns):
+        calls.append(("audit", bool(ns.dry_run)))
+        return 0
+
+    cli.cmd_audit = fake_audit
+    cli._open_html = lambda p: calls.append(("open", Path(p).name)) or True
+    cli._interactive = lambda: True
+    builtins.input = lambda *a, **k: next(answers)
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            ini = Path(td) / "node-audit.ini"
+            out = Path(td) / "out"
+            out.mkdir()
+            (out / "latest.html").write_text("ok", encoding="utf-8")
+            ini.write_text(
+                "[audit]\nmode = isolated\n[output]\ndir = %s\nopen_report = false\n"
+                % out.as_posix(),
+                encoding="utf-8",
+            )
+            rc = cmd_run(argparse.Namespace(ini=str(ini), no_open=True, yes=False))
+            assert rc == 0
+            assert calls[0] == ("open", "latest.html")
+            assert calls[1] == ("audit", False)
+            assert [c[0] for c in calls].count("audit") == 1
+    finally:
+        cli.cmd_audit = orig_audit
+        cli._open_html = orig_open
+        cli._interactive = orig_inter
+        builtins.input = orig_input
+
+
 def test_cmd_run_yes_invokes_audit_and_logs():
     import node_audit.cli as cli
     orig = cli.cmd_audit

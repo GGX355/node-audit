@@ -428,13 +428,29 @@ def _menu(has_report: bool) -> str:
     try:
         raw = input("选择 [1]: ").strip().lower()
     except EOFError:
-        return "1"
+        return "q"
     if raw in ("", "1"):
         return "1"
     if raw in ("2", "3", "4", "h", "help", "q"):
         return "4" if raw in ("h", "help") else raw
-    print(f"不认识「{raw}」，按 1 开始审计。")
-    return "1"
+    print(f"不认识「{raw}」，请重新选择。")
+    return "retry"
+
+
+def _run_audit_once(ns, settings, log_path: Path, latest_html: Path) -> int:
+    if ns.dry_run:
+        print("模式: 只列表（dry-run）")
+    else:
+        print("开始全量审计。窗口请开着，中途可 Ctrl+C 保留已测部分。")
+    print()
+    rc = cmd_audit(ns)
+    if rc == 0 and not ns.dry_run and settings.open_report:
+        if _open_html(latest_html):
+            print(f"已打开报告 {latest_html}")
+        else:
+            print(f"审计结束。请打开 {latest_html}")
+    print(f"完整日志: {log_path}")
+    return rc
 
 
 def cmd_help(_args=None) -> int:
@@ -480,41 +496,36 @@ def cmd_run(args) -> int:
     sys.stderr = Tee(orig_err, logf)
     rc = 1
     try:
-        if not skip_menu:
-            _print_banner(ini, outdir, log_path, created)
+        _print_banner(ini, outdir, log_path, created)
+        if skip_menu:
+            print("非交互 / --yes：直接开始全量审计。")
+            print()
+            return _run_audit_once(ns, settings, log_path, latest_html)
+
+        rc = 0
+        while True:
             choice = _menu(latest_html.is_file())
+            if choice == "retry":
+                continue
             if choice == "q":
                 print("已退出。")
-                return 0
+                return rc
             if choice == "2":
                 if _open_html(latest_html):
                     print(f"已打开 {latest_html}")
-                    return 0
-                print("还没有 latest.html。请先选 1 跑一次审计。")
-                return 1
+                    print("报告在浏览器里。本窗口还在，可继续选 1 开始审计。")
+                else:
+                    print("还没有 latest.html。请先选 1 跑一次审计。")
+                continue
             if choice == "4":
-                return cmd_help(args)
-            if choice == "3":
-                ns.dry_run = True
-        else:
-            _print_banner(ini, outdir, log_path, created)
-            print("非交互 / --yes：直接开始全量审计。")
-            print()
-
-        print(f"日志同时写入 {log_path}")
-        if ns.dry_run:
-            print("模式: 只列表（dry-run）")
-        else:
-            print("开始全量审计。窗口请开着，中途可 Ctrl+C 保留已测部分。")
-        print()
-        rc = cmd_audit(ns)
-        if rc == 0 and not ns.dry_run and settings.open_report:
-            if _open_html(latest_html):
-                print(f"已打开报告 {latest_html}")
-            else:
-                print(f"审计结束。请打开 {latest_html}")
-        print(f"完整日志: {log_path}")
-        return rc
+                cmd_help(args)
+                print("本窗口还在，可继续选择。")
+                continue
+            ns.dry_run = choice == "3"
+            print(f"日志同时写入 {log_path}")
+            rc = _run_audit_once(ns, settings, log_path, latest_html)
+            ns.dry_run = False
+            print("可继续选择：1 再测 / 2 看报告 / 4 说明 / Q 退出。")
     finally:
         sys.stdout = orig_out
         sys.stderr = orig_err

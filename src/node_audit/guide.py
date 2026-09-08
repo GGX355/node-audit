@@ -36,6 +36,7 @@ _SECTIONS: list[tuple[str, str]] = [
   </ul>
 </li>
 <li>直接按 Enter 等于选 1。</li>
+<li>选 2 / 4 打开报告或说明后<strong>不会退出</strong>，窗口还在，可以接着选 1。</li>
 </ol>
 <p>全量大约 <strong>十几到二十分钟</strong>（节点多会更久）。测速、深检都要联网。中途可 Ctrl+C，已测完的会保留。</p>
 """),

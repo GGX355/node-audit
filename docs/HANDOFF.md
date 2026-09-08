@@ -2,7 +2,7 @@
 
 仓库：https://github.com/GGX355/node-audit  
 分支：`main`  
-当前代码版本：**0.13.0**（服务探针超时原因 + IPv6 身份补全）
+当前代码版本：**0.13.1**（菜单循环：选 2/4 打开后不退出，可再选 1）
 
 下载给用户用的程序：GitHub **Releases** 里的 `node-audit.exe`（不要从源码树里找，exe 不进 git）。
 
@@ -24,7 +24,7 @@ git clone https://github.com/GGX355/node-audit.git
 cd node-audit
 $env:PYTHONPATH='src'
 python tests/run_all.py          # 应全部 passed
-python -m node_audit --version   # node-audit 0.10.0
+python -m node_audit --version   # node-audit 0.13.1
 ```
 
 打包：
@@ -46,11 +46,15 @@ powershell -ExecutionPolicy Bypass -File scripts\build-exe.ps1
 
 **v0.9** 控制台日期刻度、PTR/ASN、CSV。
 
-**v0.10**
+**v0.10** GitHub README 改成给使用者看的首页；软件内使用说明（菜单 4 / `?`）。
 
-- GitHub README 改成给使用者看的首页（下载 / 30 秒上手 / 报告 / 设置 / FAQ）
-- 软件内使用说明：双击菜单 4、`node-audit help`、控制台右上角「说明」/`?`
-- 报告目录和 exe 旁边会写 `使用说明.html`
+**v0.11** IPPure / iplark 深检，ping0 改查 `/ip/{地址}`，身份失败用 ipify/IPPure 兜底。
+
+**v0.12** isolated 默认 3 路并行，ip-api 排队限流。
+
+**v0.13.0** 服务探针显示超时原因，IPv6 身份用 IPPure 补全。
+
+**v0.13.1** 双击菜单循环：选 2 打开报告、选 4 打开说明、选 3 只列表之后**不退出**，可再选 1 开始审计。只有 Q 退出。
 
 ---
 
