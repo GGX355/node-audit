@@ -2,7 +2,7 @@
 
 仓库：https://github.com/GGX355/node-audit  
 分支：`main`  
-当前代码版本：**0.14.0**（多配置切换 + 机房黄/失败红 + 机房风控）
+当前代码版本：**0.14.1**（便携文件夹：exe 旁边可放 yaml/内核；说明其它代理能否用）
 
 下载给用户用的程序：GitHub **Releases** 里的 `node-audit.exe`（不要从源码树里找，exe 不进 git）。
 
@@ -24,7 +24,7 @@ git clone https://github.com/GGX355/node-audit.git
 cd node-audit
 $env:PYTHONPATH='src'
 python tests/run_all.py          # 应全部 passed
-python -m node_audit --version   # node-audit 0.14.0
+python -m node_audit --version   # node-audit 0.14.1
 ```
 
 打包：
@@ -57,6 +57,8 @@ powershell -ExecutionPolicy Bypass -File scripts\build-exe.ps1
 **v0.13.1** 双击菜单循环：选 2 打开报告、选 4 打开说明、选 3 只列表之后**不退出**，可再选 1 开始审计。只有 Q 退出。
 
 **v0.14.0** 多配置自动分桶（配置1/配置2）+ 报告顶栏切换；机房黄、失败红；机房也显示 IPPure 风控%。
+
+**v0.14.1** 便携：exe 旁边的 `clash-verge.yaml` / `verge-mihomo.exe` 优先于系统安装目录；ini 可写 `core` / `config`。v2rayN 等非 Clash 客户端不能直接用。
 
 ---
 

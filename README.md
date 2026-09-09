@@ -13,8 +13,8 @@ Clash / mihomo **节点质量审计**：双击一个 exe，把订阅里每个节
 
 ## 30 秒上手
 
-1. 本机装着 **Clash Verge / Verge Rev**，并成功打开过一次（磁盘上要有 `clash-verge.yaml`）。
-2. 下载 `node-audit.exe`，放到任意普通文件夹。
+1. 本机装着 **Clash Verge / Verge Rev**（或其它 Clash/mihomo 客户端），并成功打开过一次（磁盘上要有 `clash-verge.yaml` / `config.yaml`）。v2rayN、NekoBox、Hiddify 不能直接用。
+2. 下载 `node-audit.exe`，放到任意普通文件夹。设置、日志、报告都写在这一夹里，整夹可拷走。想在没装 Verge 的电脑上跑，把 `verge-mihomo.exe` 和 `clash-verge.yaml` 也放进去。
 3. **双击**。黑窗口不要关。
 4. 菜单选 **1**（或直接 Enter）开始全量审计，大约十几～二十分钟。
 5. 结束后自动打开 `node-audit-report\latest.html`。选 **2** / **4** 只打开浏览器，**窗口还在**，可以接着选 **1**。只有 **Q** 才退出。
@@ -85,7 +85,10 @@ node-audit.exe run --yes
 ## 常见问题
 
 **找不到配置 / 内核**  
-先打开一次 Clash Verge。内核常见路径：`%LOCALAPPDATA%\Programs\Clash Verge\verge-mihomo.exe`。
+先打开一次 Clash Verge。内核常见路径：`%LOCALAPPDATA%\Programs\Clash Verge\verge-mihomo.exe`。也可以把 `verge-mihomo.exe` 和 `clash-verge.yaml` 拷到 exe 旁边。
+
+**不是 Clash Verge，是 v2rayN / NekoBox？**  
+不能直接测。只认 Clash/mihomo 的 yaml + 内核。把订阅导入 Verge，或把 yaml 和 mihomo 放进 exe 那一夹。
 
 **窗口一闪就关**  
 正常结束会停在「按 Enter 关闭窗口」。闪退去看 `node-audit-report\latest.log`。

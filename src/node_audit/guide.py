@@ -15,10 +15,11 @@ _SECTIONS: list[tuple[str, str]] = [
 """),
     ("使用前准备", """
 <ol>
-<li>安装 <strong>Clash Verge</strong> 或 <strong>Clash Verge Rev</strong>。</li>
-<li>至少<strong>成功打开过一次</strong>，让磁盘上生成运行时配置（常见路径：<code>%APPDATA%\\io.github.clash-verge-rev.clash-verge-rev\\clash-verge.yaml</code>）。</li>
-<li>订阅要以内联 <code>proxies:</code> 写在这份配置里（Verge 默认就是这样）。如果走的是 <code>proxy-providers</code> 远程提供者，本工具的 isolated 模式暂不支持。</li>
-<li>审计期间 Verge <strong>不必开着</strong>，但配置文件和 <code>verge-mihomo.exe</code> 要在。</li>
+<li>本工具吃的是 <strong>Clash / mihomo 内核 + 带内联 proxies 的 yaml</strong>。Clash Verge / Verge Rev 开箱即用；Clash Meta、官方 mihomo、Clash for Windows（config.yaml）一般也能自动找到。</li>
+<li>至少<strong>成功打开过一次</strong>客户端，让磁盘上生成运行时配置（Verge 常见路径：<code>%APPDATA%\\io.github.clash-verge-rev.clash-verge-rev\\clash-verge.yaml</code>）。</li>
+<li>订阅要以内联 <code>proxies:</code> 写在这份配置里。如果走的是 <code>proxy-providers</code> 远程提供者，isolated 模式暂不支持。</li>
+<li>审计期间客户端<strong>不必开着</strong>，但 yaml 和内核（<code>verge-mihomo.exe</code> / <code>mihomo.exe</code>）要在。</li>
+<li><strong>不能直接用</strong>：v2rayN、NekoBox、Hiddify、sing-box 图形客户端、SSR 等——协议/配置不是 Clash yaml，也没有 mihomo 内核。要把订阅导入 Clash Verge，或把 yaml + mihomo 拷到本程序旁边（见「便携文件夹」）。</li>
 </ol>
 """),
     ("第一次用（双击 exe）", """
@@ -52,6 +53,18 @@ _SECTIONS: list[tuple[str, str]] = [
 </table>
 <p>跑完一般会自动用浏览器打开 <code>latest.html</code>。也可以以后再双击这个文件，或软件菜单选 2。</p>
 <p><code>examples/sample-dashboard.html</code>（仓库里）是 <strong>假数据演示</strong>，不是你的订阅。顶栏可切配置1 / 配置2。</p>
+"""),
+    ("便携文件夹（整夹搬走）", """
+<p>双击 exe 时，设置、日志、报告都写在 <strong>exe 所在文件夹</strong>，拷走这一整个目录即可：</p>
+<pre>某文件夹\\
+  node-audit.exe          主程序
+  node-audit.ini          设置（第一次双击自动生成）
+  使用说明.html
+  verge-mihomo.exe        可选：从 Clash Verge 安装目录拷来，没装 Verge 的电脑也能测
+  clash-verge.yaml        可选：运行时配置。有它就不再去 %APPDATA% 找
+  node-audit-report\\     日志 + 报告 + history.db</pre>
+<p>换电脑：把这一夹复制过去，双击 exe。目标机不必先装 Clash Verge，但夹里要有内核和 yaml（或目标机自己装着 Verge）。</p>
+<p>v2rayN 等其它客户端：不能读它们的配置。把订阅先导入 Clash Verge 导出 yaml，或把 Verge 生成的 <code>clash-verge.yaml</code> 和 <code>verge-mihomo.exe</code> 拷进这一夹。</p>
 """),
     ("控制台怎么看", """
 <ul>
@@ -92,6 +105,8 @@ _SECTIONS: list[tuple[str, str]] = [
 <tr><td><code>deep</code></td><td>auto</td><td>auto=住宅网页深检，机房只打 IPPure 风控分；off=不做；all=每个都做网页深检（慢）。</td></tr>
 <tr><td><code>services</code></td><td>all</td><td>all / none / openai,netflix,tiktok</td></tr>
 <tr><td><code>config_name</code></td><td>空</td><td>给当前这套节点起名（家里 / 公司）。空 = 自动 配置1、配置2。</td></tr>
+<tr><td><code>core</code></td><td>空</td><td>mihomo 内核路径。空 = 先找 exe 旁边，再找 Verge 安装目录。</td></tr>
+<tr><td><code>config</code></td><td>空</td><td>运行时 yaml。空 = 先找 exe 旁边的 clash-verge.yaml，再找 Verge 数据目录。</td></tr>
 <tr><td><code>ipqs_key</code> / <code>abuseipdb_key</code></td><td>空</td><td>可选官方风控 API。没有也能跑。</td></tr>
 <tr><td><code>dir</code></td><td>空</td><td>报告目录。空 = 程序旁边的 node-audit-report。</td></tr>
 <tr><td><code>open_report</code></td><td>true</td><td>跑完是否自动打开 latest.html。</td></tr>
@@ -118,7 +133,9 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
     ("常见问题", """
 <dl>
 <dt>提示找不到配置 / 内核</dt>
-<dd>先打开一次 Clash Verge。内核一般在 <code>%LOCALAPPDATA%\\Programs\\Clash Verge\\verge-mihomo.exe</code>。也可在命令行 <code>--core</code> 指定路径。</dd>
+<dd>先打开一次 Clash Verge。内核一般在 <code>%LOCALAPPDATA%\\Programs\\Clash Verge\\verge-mihomo.exe</code>。也可以把 <code>verge-mihomo.exe</code> 和 <code>clash-verge.yaml</code> 拷到 exe 旁边，或 ini 里写 <code>core</code> / <code>config</code>。</dd>
+<dt>电脑上不是 Clash Verge，是 v2rayN / NekoBox / Hiddify？</dt>
+<dd>不能直接测。本工具只认 Clash/mihomo 的 yaml + 内核。把订阅导入 Clash Verge，或把 yaml 和 mihomo 放进 exe 旁边的文件夹。</dd>
 <dt>窗口一闪就关</dt>
 <dd>双击结束后会「按 Enter 关闭窗口」。若闪退，到 <code>node-audit-report\\latest.log</code> 看最后几行。</dd>
 <dt>测了很久 / 想加快</dt>

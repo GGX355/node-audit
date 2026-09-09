@@ -58,10 +58,31 @@ def core_binary_candidates() -> list[Path]:
     return candidates
 
 
+def core_names() -> tuple[str, ...]:
+    if sys.platform == "win32":
+        return ("verge-mihomo.exe", "mihomo.exe", "clash-meta.exe")
+    return ("verge-mihomo", "mihomo", "clash-meta")
+
+
+def core_in_dir(directory: Path) -> Path | None:
+    """目录里有 mihomo / verge-mihomo / clash-meta 则返回该文件。"""
+    d = Path(directory)
+    for name in core_names():
+        p = d / name
+        if p.is_file():
+            return p
+    return None
+
+
 def find_core_binary(explicit: str | None = None) -> str | None:
-    """定位 mihomo 内核：显式指定 > PATH > Clash Verge / Verge Rev 安装目录。"""
+    """定位 mihomo 内核：显式路径 > exe 旁边 > PATH > Clash Verge 安装目录。"""
     if explicit:
-        return explicit if Path(explicit).is_file() else None
+        p = Path(explicit)
+        return str(p) if p.is_file() else None
+    from ..paths import app_dir
+    local = core_in_dir(app_dir())
+    if local:
+        return str(local)
     for name in ("mihomo", "verge-mihomo", "clash-meta"):
         p = shutil.which(name)
         if p:

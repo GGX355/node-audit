@@ -135,17 +135,18 @@ svg.spark{width:100%;height:72px;display:block}
   aside.side{border-right:0;border-bottom:1px solid var(--stroke);max-height:40vh}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
-</style></head><body><div id='na-app'><header class='top'><i class='mark'></i><span class='brand'>node-audit</span><select class='sub' id='sub' title='切换配置'></select><span class='meta' id='meta'></span><button class='csv' id='csv' type='button'>导出 CSV</button><button class='csv' id='help-btn' type='button'>说明</button></header><div id='demo-banner' class='demo'>演示数据，不是你的订阅。跑 <code>node-audit audit --mode isolated --yes</code> 之后打开 <code>node-audit-report/latest.html</code> 才是当前订阅的全量节点。</div><div class='body'><aside class='side'><div class='side-tools'><input id='q' type='search' placeholder='搜索节点' autocomplete='off'><div class='chips'><button class='on' data-f='all'>全部</button><button data-f='res'>家宽</button><button data-f='dc'>机房</button><button data-f='slow'>变慢</button><button data-f='rot'>换 IP</button><button data-f='fail'>失败</button><button data-f='hist'>历史</button></div></div><div id='list'></div><div class='hint'>顶栏切配置 · j / k 切换节点 · ? 说明 · 「历史」= 这套里这次没测到的节点</div></aside><main class='main'><div class='kpis' id='kpis'></div><div id='detail'></div></main></div></div><div id='help' class='help-ov' role='dialog' aria-label='使用说明'><div class='help-card'><div class='help-top'><b>使用说明</b><button class='csv' id='help-close' type='button'>关闭</button></div><p class='guide-ver'>node-audit 0.14.0</p>
+</style></head><body><div id='na-app'><header class='top'><i class='mark'></i><span class='brand'>node-audit</span><select class='sub' id='sub' title='切换配置'></select><span class='meta' id='meta'></span><button class='csv' id='csv' type='button'>导出 CSV</button><button class='csv' id='help-btn' type='button'>说明</button></header><div id='demo-banner' class='demo'>演示数据，不是你的订阅。跑 <code>node-audit audit --mode isolated --yes</code> 之后打开 <code>node-audit-report/latest.html</code> 才是当前订阅的全量节点。</div><div class='body'><aside class='side'><div class='side-tools'><input id='q' type='search' placeholder='搜索节点' autocomplete='off'><div class='chips'><button class='on' data-f='all'>全部</button><button data-f='res'>家宽</button><button data-f='dc'>机房</button><button data-f='slow'>变慢</button><button data-f='rot'>换 IP</button><button data-f='fail'>失败</button><button data-f='hist'>历史</button></div></div><div id='list'></div><div class='hint'>顶栏切配置 · j / k 切换节点 · ? 说明 · 「历史」= 这套里这次没测到的节点</div></aside><main class='main'><div class='kpis' id='kpis'></div><div id='detail'></div></main></div></div><div id='help' class='help-ov' role='dialog' aria-label='使用说明'><div class='help-card'><div class='help-top'><b>使用说明</b><button class='csv' id='help-close' type='button'>关闭</button></div><p class='guide-ver'>node-audit 0.14.1</p>
 <h2 id='g1'>这是什么</h2>
 <p>node-audit 会把你订阅里的<strong>每一个真实节点</strong>测一遍：出口 IP（含 IPv6）、是不是机房、PTR/ASN、延迟、速度、风控，以及 GPT / Netflix / TikTok 能不能用。</p>
 <p>默认用 <strong>isolated</strong>：在本机另起一个临时内核，<strong>不会切换你正在上网的代理</strong>。浏览器、下载、游戏都不受影响。</p>
 <p>本工具只检测<strong>你自己的订阅</strong>，不提供、不配置任何代理服务。</p>
 <h2 id='g2'>使用前准备</h2>
 <ol>
-<li>安装 <strong>Clash Verge</strong> 或 <strong>Clash Verge Rev</strong>。</li>
-<li>至少<strong>成功打开过一次</strong>，让磁盘上生成运行时配置（常见路径：<code>%APPDATA%\io.github.clash-verge-rev.clash-verge-rev\clash-verge.yaml</code>）。</li>
-<li>订阅要以内联 <code>proxies:</code> 写在这份配置里（Verge 默认就是这样）。如果走的是 <code>proxy-providers</code> 远程提供者，本工具的 isolated 模式暂不支持。</li>
-<li>审计期间 Verge <strong>不必开着</strong>，但配置文件和 <code>verge-mihomo.exe</code> 要在。</li>
+<li>本工具吃的是 <strong>Clash / mihomo 内核 + 带内联 proxies 的 yaml</strong>。Clash Verge / Verge Rev 开箱即用；Clash Meta、官方 mihomo、Clash for Windows（config.yaml）一般也能自动找到。</li>
+<li>至少<strong>成功打开过一次</strong>客户端，让磁盘上生成运行时配置（Verge 常见路径：<code>%APPDATA%\io.github.clash-verge-rev.clash-verge-rev\clash-verge.yaml</code>）。</li>
+<li>订阅要以内联 <code>proxies:</code> 写在这份配置里。如果走的是 <code>proxy-providers</code> 远程提供者，isolated 模式暂不支持。</li>
+<li>审计期间客户端<strong>不必开着</strong>，但 yaml 和内核（<code>verge-mihomo.exe</code> / <code>mihomo.exe</code>）要在。</li>
+<li><strong>不能直接用</strong>：v2rayN、NekoBox、Hiddify、sing-box 图形客户端、SSR 等——协议/配置不是 Clash yaml，也没有 mihomo 内核。要把订阅导入 Clash Verge，或把 yaml + mihomo 拷到本程序旁边（见「便携文件夹」）。</li>
 </ol>
 <h2 id='g3'>第一次用（双击 exe）</h2>
 <ol>
@@ -177,7 +178,18 @@ svg.spark{width:100%;height:72px;display:block}
 </table>
 <p>跑完一般会自动用浏览器打开 <code>latest.html</code>。也可以以后再双击这个文件，或软件菜单选 2。</p>
 <p><code>examples/sample-dashboard.html</code>（仓库里）是 <strong>假数据演示</strong>，不是你的订阅。顶栏可切配置1 / 配置2。</p>
-<h2 id='g5'>控制台怎么看</h2>
+<h2 id='g5'>便携文件夹（整夹搬走）</h2>
+<p>双击 exe 时，设置、日志、报告都写在 <strong>exe 所在文件夹</strong>，拷走这一整个目录即可：</p>
+<pre>某文件夹\
+  node-audit.exe          主程序
+  node-audit.ini          设置（第一次双击自动生成）
+  使用说明.html
+  verge-mihomo.exe        可选：从 Clash Verge 安装目录拷来，没装 Verge 的电脑也能测
+  clash-verge.yaml        可选：运行时配置。有它就不再去 %APPDATA% 找
+  node-audit-report\     日志 + 报告 + history.db</pre>
+<p>换电脑：把这一夹复制过去，双击 exe。目标机不必先装 Clash Verge，但夹里要有内核和 yaml（或目标机自己装着 Verge）。</p>
+<p>v2rayN 等其它客户端：不能读它们的配置。把订阅先导入 Clash Verge 导出 yaml，或把 Verge 生成的 <code>clash-verge.yaml</code> 和 <code>verge-mihomo.exe</code> 拷进这一夹。</p>
+<h2 id='g6'>控制台怎么看</h2>
 <ul>
 <li><strong>左侧</strong>：搜索框 + 筛选（家宽 / 机房 / 变慢 / 换 IP / 失败 / 历史）。键盘 <kbd>j</kbd> / <kbd>k</kbd> 上下切换节点。</li>
 <li><strong>KPI</strong>：节点数、成功、家宽、机房、变慢、换 IP、失败。</li>
@@ -189,7 +201,7 @@ svg.spark{width:100%;height:72px;display:block}
 <li><strong>说明</strong>：右上角，打开与本文相同的使用说明。快捷键 <kbd>?</kbd>，<kbd>Esc</kbd> 关闭。</li>
 </ul>
 <p>圆点颜色：家宽绿、机房黄、失败红。「历史」= <strong>当前这套</strong>里上次有、这次没测到的节点，不是另一套 VPN。</p>
-<h2 id='g6'>判定怎么读</h2>
+<h2 id='g7'>判定怎么读</h2>
 <ul>
 <li><strong>机房</strong>：ip-api 的 hosting=true，生死线。CDN / 云厂商出口几乎都是这个。侧栏黄点。也会显示 IPPure 风控% 和 GPT/NF/TT。</li>
 <li><strong>住宅候选 / 疑似真家宽</strong>：hosting=false，再用 ping0 看「家庭宽带 / 原生 / 风控%」。</li>
@@ -200,7 +212,7 @@ svg.spark{width:100%;height:72px;display:block}
 <li><strong>变慢（整行标红置顶）</strong>：速度掉 ≥40%，或 RTT 翻倍。</li>
 </ul>
 <p>GPT / NF / TT 是实测能否打开，不是「这个 IP 安不安全」的分数。</p>
-<h2 id='g7'>改设置 node-audit.ini</h2>
+<h2 id='g8'>改设置 node-audit.ini</h2>
 <p>和 exe 放在同一文件夹，用记事本打开。改完保存，下次双击生效。行首 <code>#</code> 是注释。</p>
 <table>
 <tr><th>项</th><th>默认</th><th>说明</th></tr>
@@ -214,18 +226,20 @@ svg.spark{width:100%;height:72px;display:block}
 <tr><td><code>deep</code></td><td>auto</td><td>auto=住宅网页深检，机房只打 IPPure 风控分；off=不做；all=每个都做网页深检（慢）。</td></tr>
 <tr><td><code>services</code></td><td>all</td><td>all / none / openai,netflix,tiktok</td></tr>
 <tr><td><code>config_name</code></td><td>空</td><td>给当前这套节点起名（家里 / 公司）。空 = 自动 配置1、配置2。</td></tr>
+<tr><td><code>core</code></td><td>空</td><td>mihomo 内核路径。空 = 先找 exe 旁边，再找 Verge 安装目录。</td></tr>
+<tr><td><code>config</code></td><td>空</td><td>运行时 yaml。空 = 先找 exe 旁边的 clash-verge.yaml，再找 Verge 数据目录。</td></tr>
 <tr><td><code>ipqs_key</code> / <code>abuseipdb_key</code></td><td>空</td><td>可选官方风控 API。没有也能跑。</td></tr>
 <tr><td><code>dir</code></td><td>空</td><td>报告目录。空 = 程序旁边的 node-audit-report。</td></tr>
 <tr><td><code>open_report</code></td><td>true</td><td>跑完是否自动打开 latest.html。</td></tr>
 </table>
-<h2 id='g8'>每天自动跑</h2>
+<h2 id='g9'>每天自动跑</h2>
 <p>计划任务不要弹菜单，用：</p>
 <pre>node-audit.exe run --yes</pre>
 <p>仓库 <code>examples\register-daily-task.ps1</code> 会注册每天 04:00 的任务 <code>node-audit-daily</code>（跑 <code>examples\audit-daily.bat</code>）。</p>
 <pre>schtasks /Run /TN node-audit-daily
 schtasks /Delete /TN node-audit-daily /F</pre>
 <p>改成每周日：把 ps1 里的 <code>/SC DAILY /ST 04:00</code> 换成 <code>/SC WEEKLY /D SUN /ST 04:00</code>。</p>
-<h2 id='g9'>命令行（可选）</h2>
+<h2 id='g10'>命令行（可选）</h2>
 <p>双击等于 <code>node-audit run</code>。还可以：</p>
 <pre>node-audit.exe --version
 node-audit.exe help              打开使用说明
@@ -234,10 +248,12 @@ node-audit.exe discover          只看控制器和节点数
 node-audit.exe audit --dry-run   只列表
 node-audit.exe audit --yes --include "台湾"
 node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pre>
-<h2 id='g10'>常见问题</h2>
+<h2 id='g11'>常见问题</h2>
 <dl>
 <dt>提示找不到配置 / 内核</dt>
-<dd>先打开一次 Clash Verge。内核一般在 <code>%LOCALAPPDATA%\Programs\Clash Verge\verge-mihomo.exe</code>。也可在命令行 <code>--core</code> 指定路径。</dd>
+<dd>先打开一次 Clash Verge。内核一般在 <code>%LOCALAPPDATA%\Programs\Clash Verge\verge-mihomo.exe</code>。也可以把 <code>verge-mihomo.exe</code> 和 <code>clash-verge.yaml</code> 拷到 exe 旁边，或 ini 里写 <code>core</code> / <code>config</code>。</dd>
+<dt>电脑上不是 Clash Verge，是 v2rayN / NekoBox / Hiddify？</dt>
+<dd>不能直接测。本工具只认 Clash/mihomo 的 yaml + 内核。把订阅导入 Clash Verge，或把 yaml 和 mihomo 放进 exe 旁边的文件夹。</dd>
 <dt>窗口一闪就关</dt>
 <dd>双击结束后会「按 Enter 关闭窗口」。若闪退，到 <code>node-audit-report\latest.log</code> 看最后几行。</dd>
 <dt>测了很久 / 想加快</dt>
@@ -255,7 +271,7 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
 <dt>会不会把我的账号搞风控？</dt>
 <dd>isolated 下探针走临时端口，你的浏览器不动。不要用 attach 模式还挂着已登录的网页。</dd>
 </dl>
-<h2 id='g11'>隐私与安全</h2>
+<h2 id='g12'>隐私与安全</h2>
 <ul>
 <li>所有检测请求显式走<strong>被测节点</strong>，不读系统环境代理。</li>
 <li>服务探针不带 Cookie / Token / 登录态。</li>

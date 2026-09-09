@@ -22,3 +22,13 @@ def default_out_dir() -> Path:
 
 def default_ini_path() -> Path:
     return app_dir() / "node-audit.ini"
+
+
+def resolve_app_path(p: str | None) -> Path | None:
+    """相对路径按程序目录（exe 旁边）解析，方便便携包。"""
+    if p is None or not str(p).strip():
+        return None
+    path = Path(str(p).strip())
+    if not path.is_absolute():
+        path = app_dir() / path
+    return path

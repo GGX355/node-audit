@@ -75,13 +75,27 @@ def runtime_config_dirs() -> list[tuple[str, Path]]:
 _RUNTIME_FILES = ("clash-verge.yaml", "config.yaml")
 
 
+def config_in_dir(directory: Path) -> Path | None:
+    """目录里有 clash-verge.yaml 或 config.yaml 则返回该文件。"""
+    d = Path(directory)
+    for name in _RUNTIME_FILES:
+        p = d / name
+        if p.is_file():
+            return p
+    return None
+
+
 def find_runtime_config() -> Path | None:
     found = find_runtime_config_labeled()
     return found[0] if found else None
 
 
 def find_runtime_config_labeled() -> tuple[Path, str] | None:
-    """返回 (配置路径, 应用名)；Rev 优先，找不到返回 None。"""
+    """返回 (配置路径, 应用名)。exe 旁边的便携 yaml 优先，然后 Rev → 其它 Clash。"""
+    from ..paths import app_dir
+    portable = config_in_dir(app_dir())
+    if portable:
+        return portable, "便携目录"
     for label, d in runtime_config_dirs():
         for name in _RUNTIME_FILES:
             p = d / name
@@ -110,16 +124,24 @@ def _unquote(v: str | None) -> str:
 
 
 def discover(explicit: dict | None = None) -> Discovery:
-    """探测控制器；explicit 可强制覆盖 {"api": "host:port", "pipe": name,
-    "secret": str, "mixed_port": int}。"""
+    """探测控制器；explicit 可强制覆盖 {"config": path, "api": "host:port",
+    "pipe": name, "secret": str, "mixed_port": int}。"""
     disc = Discovery()
-    labeled = find_runtime_config_labeled()
     text = ""
-    if labeled:
-        cfg, label = labeled
-        disc.config_path = str(cfg)
-        disc.app_label = label
-        text = cfg.read_text(encoding="utf-8", errors="replace")
+    forced = None
+    if explicit and explicit.get("config"):
+        forced = Path(explicit["config"])
+    if forced and forced.is_file():
+        disc.config_path = str(forced)
+        disc.app_label = "指定配置"
+        text = forced.read_text(encoding="utf-8", errors="replace")
+    else:
+        labeled = find_runtime_config_labeled()
+        if labeled:
+            cfg, label = labeled
+            disc.config_path = str(cfg)
+            disc.app_label = label
+            text = cfg.read_text(encoding="utf-8", errors="replace")
 
     ec = _unquote(_pick(text, r"^\s*external-controller:\s*(.*?)\s*$"))
     pipe = _unquote(_pick(text, r"^\s*external-controller-pipe:\s*(.*?)\s*$"))

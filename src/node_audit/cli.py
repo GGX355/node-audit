@@ -218,7 +218,15 @@ def _nodes_via_api(disc, args):
 
 
 def cmd_audit(args) -> int:
-    disc = discover()
+    from .paths import resolve_app_path
+    explicit = {}
+    if getattr(args, "config", None):
+        cfg = resolve_app_path(args.config)
+        if not cfg or not cfg.is_file():
+            print(f"错误: 找不到配置文件 {args.config}", file=sys.stderr)
+            return 1
+        explicit["config"] = str(cfg)
+    disc = discover(explicit or None)
     if args.mixed_port:
         disc.mixed_port = args.mixed_port
 
@@ -274,12 +282,17 @@ def cmd_audit(args) -> int:
         return 0
 
     if args.mode == "isolated":
-        core = find_core_binary(args.core)
+        core_arg = getattr(args, "core", None)
+        core_path = resolve_app_path(core_arg)
+        core = find_core_binary(str(core_path) if core_path else None)
         if not core:
-            print("错误: 未找到 mihomo 内核（可用 --core 指定路径）", file=sys.stderr)
+            print("错误: 未找到 mihomo 内核。可把 verge-mihomo.exe 放到本程序旁边，或 --core 指定路径",
+                  file=sys.stderr)
             return 1
         if not disc.config_path or not runtime_text:
-            print("错误: isolated 模式需要读取 Verge 运行时配置，未找到；可改用 attach 模式", file=sys.stderr)
+            print("错误: 未找到运行时配置（exe 旁边的 clash-verge.yaml / config.yaml，"
+                  "或 Clash Verge 数据目录）。可把 yaml 放到本程序旁边，或 --config 指定",
+                  file=sys.stderr)
             return 1
         opts = Opts(args, disc.mixed_port)
         opts.runtime_cfg_text = runtime_text
@@ -393,7 +406,8 @@ def _audit_ns_from_settings(settings) -> argparse.Namespace:
         abuseipdb_key=settings.abuseipdb_key or os.environ.get("NODE_AUDIT_ABUSEIPDB_KEY"),
         port_base=41000,
         workers=getattr(settings, "workers", 3),
-        core=None,
+        core=getattr(settings, "core", None),
+        config=getattr(settings, "config", None),
         out=settings.out or str(default_out_dir()),
         db=None,
         trend_runs=30,
@@ -594,7 +608,8 @@ def main(argv=None) -> int:
                        help="isolated 同时测几个节点（默认 3，最大 8；attach 忽略）")
     p_aud.add_argument("--port-base", type=int, default=41000,
                        help="isolated 模式的独立端口起始值（默认 41000）")
-    p_aud.add_argument("--core", default=None, help="isolated 模式的 mihomo 内核路径（默认自动查找）")
+    p_aud.add_argument("--core", default=None, help="mihomo 内核路径（默认：exe 旁边 / PATH / Clash Verge 安装目录）")
+    p_aud.add_argument("--config", default=None, help="运行时 yaml 路径（默认：exe 旁边 clash-verge.yaml，或自动发现 Verge）")
     p_aud.add_argument("--out", default="node-audit-report", help="报告输出目录（默认 ./node-audit-report）")
     p_aud.add_argument("--db", default=None,
                        help="历史趋势 SQLite 路径（默认 <out>/history.db）")

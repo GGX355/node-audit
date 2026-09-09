@@ -52,6 +52,8 @@ def test_load_settings_overrides():
             "deep = off\n"
             "services = none\n"
             "config_name = 家里\n"
+            "core = verge-mihomo.exe\n"
+            "config = clash-verge.yaml\n"
             "[output]\n"
             "dir = reports-out\n"
             "open_report = false\n",
@@ -66,6 +68,8 @@ def test_load_settings_overrides():
         assert s.deep == "off"
         assert s.services == "none"
         assert s.config_name == "家里"
+        assert s.core == "verge-mihomo.exe"
+        assert s.config == "clash-verge.yaml"
         assert s.out == "reports-out"
         assert s.open_report is False
 

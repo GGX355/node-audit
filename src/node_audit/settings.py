@@ -34,6 +34,10 @@ services = all
 # 给当前这套节点起名，例如 家里 / 公司。留空 = 自动 配置1、配置2。
 config_name =
 
+# 便携：把 mihomo 内核、yaml 放在 exe 旁边会自动找到。也可手写路径（相对 exe 目录）。
+core =
+config =
+
 # 可选官方风控 API（没有就留空，不影响主流程）。
 ipqs_key =
 abuseipdb_key =
@@ -63,6 +67,8 @@ class Settings:
     out: str | None = None
     open_report: bool = True
     config_name: str | None = None
+    core: str | None = None
+    config: str | None = None
 
 
 def _blank(v: str | None) -> str | None:
@@ -126,6 +132,8 @@ def load_settings(path: Path | None) -> Settings:
     s.ipqs_key = _blank(a.get("ipqs_key") if hasattr(a, "get") else None)
     s.abuseipdb_key = _blank(a.get("abuseipdb_key") if hasattr(a, "get") else None)
     s.config_name = _blank(a.get("config_name") if hasattr(a, "get") else None)
+    s.core = _blank(a.get("core") if hasattr(a, "get") else None)
+    s.config = _blank(a.get("config") if hasattr(a, "get") else None)
     s.out = _blank(o.get("dir") if hasattr(o, "get") else None)
     s.open_report = _as_bool(o.get("open_report") if hasattr(o, "get") else None, True)
     return s
