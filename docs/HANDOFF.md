@@ -2,7 +2,7 @@
 
 仓库：https://github.com/GGX355/node-audit  
 分支：`main`  
-当前代码版本：**0.13.1**（菜单循环：选 2/4 打开后不退出，可再选 1）
+当前代码版本：**0.14.0**（多配置切换 + 机房黄/失败红 + 机房风控）
 
 下载给用户用的程序：GitHub **Releases** 里的 `node-audit.exe`（不要从源码树里找，exe 不进 git）。
 
@@ -24,7 +24,7 @@ git clone https://github.com/GGX355/node-audit.git
 cd node-audit
 $env:PYTHONPATH='src'
 python tests/run_all.py          # 应全部 passed
-python -m node_audit --version   # node-audit 0.13.1
+python -m node_audit --version   # node-audit 0.14.0
 ```
 
 打包：
@@ -56,6 +56,8 @@ powershell -ExecutionPolicy Bypass -File scripts\build-exe.ps1
 
 **v0.13.1** 双击菜单循环：选 2 打开报告、选 4 打开说明、选 3 只列表之后**不退出**，可再选 1 开始审计。只有 Q 退出。
 
+**v0.14.0** 多配置自动分桶（配置1/配置2）+ 报告顶栏切换；机房黄、失败红；机房也显示 IPPure 风控%。
+
 ---
 
 ## 原 v1.0 怎么拆
@@ -79,7 +81,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build-exe.ps1
 
 | 文件 | 是什么 |
 |---|---|
-| `examples/sample-dashboard.html` | 写死的 3 个假节点，给人看 UI |
+| `examples/sample-dashboard.html` | 假数据演示（含配置1/配置2），给人看 UI |
 | `node-audit-report/latest.html` | 跑过审计之后才有，才是当前订阅全量 |
 | `node-audit.ini` | 双击后生成在 exe 旁边，不是仓库里的配置 |
 | `dist/node-audit.exe` | 本地打包产物，不要 commit |

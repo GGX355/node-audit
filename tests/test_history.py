@@ -8,6 +8,7 @@ from node_audit.core.history import (
     _add_column_if_missing,
     connect,
     enrich_trend,
+    load_dashboard,
     load_trend,
     node_overlap,
     save_run,
@@ -245,6 +246,8 @@ def test_schema_migrates_legacy_user_version_0():
             cols = {r[1] for r in conn.execute("PRAGMA table_info(results)")}
             assert "risk_pct" in cols and "deep" in cols
             assert "exit_ip6" in cols
+            subs = {r[1] for r in conn.execute("PRAGMA table_info(subscriptions)")}
+            assert "name" in subs
             _add_column_if_missing(conn, "results", "foo_extra", "TEXT")
             _add_column_if_missing(conn, "results", "foo_extra", "TEXT")
             cols2 = {r[1] for r in conn.execute("PRAGMA table_info(results)")}
@@ -303,6 +306,8 @@ def test_schema_v3_adds_exit_ip6_from_v2():
             assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
             cols = {r[1] for r in conn.execute("PRAGMA table_info(results)")}
             assert "exit_ip6" in cols
+            names = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subscriptions'").fetchone()
+            assert names is not None
         finally:
             conn.close()
 
@@ -362,3 +367,36 @@ def test_html_trend_semantics_and_latest_copy():
         latest = publish_latest(hpath)
         assert latest.name == "latest.html"
         assert latest.read_text(encoding="utf-8") == open(hpath, encoding="utf-8").read()
+
+
+def test_two_configs_named_and_isolated():
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "history.db")
+        save_run([_rep(f"A-{i}") for i in range(10)],
+                 _meta("run1", "2026-01-01T00:00:00"), db)
+        save_run([_rep(f"B-{i}") for i in range(10)],
+                 _meta("run2", "2026-01-02T00:00:00"), db)
+        payload = load_dashboard(db)
+        names = {s["name"] for s in payload["subscriptions"]}
+        assert names == {"配置1", "配置2"}
+        assert payload["meta"]["subscription_name"] == "配置2"
+        assert {n["name"] for n in payload["nodes"]} == {f"B-{i}" for i in range(10)}
+        assert len(payload["by_sub"]) == 2
+        cfg1 = next(s for s in payload["subscriptions"] if s["name"] == "配置1")
+        other = payload["by_sub"][cfg1["id"]]
+        assert {n["name"] for n in other["nodes"]} == {f"A-{i}" for i in range(10)}
+
+
+def test_config_name_renames_matched_bucket():
+    with tempfile.TemporaryDirectory() as td:
+        db = os.path.join(td, "history.db")
+        save_run([_rep(f"A-{i}") for i in range(10)],
+                 _meta("run1", "2026-01-01T00:00:00"), db)
+        meta2 = _meta("run2", "2026-01-02T00:00:00")
+        meta2["config_name"] = "家里"
+        info = save_run([_rep(f"A-{i}") for i in range(10)], meta2, db)
+        assert info["same"] is True
+        assert info["name"] == "家里"
+        payload = load_dashboard(db)
+        assert payload["meta"]["subscription_name"] == "家里"
+        assert [s["name"] for s in payload["subscriptions"]] == ["家里"]

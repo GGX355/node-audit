@@ -195,23 +195,26 @@ def _check_node(rep: NodeReport, proxy: str, opts, log=print) -> None:
 
     if opts.deep == "off":
         return
-    if rep.hosting is True and opts.deep != "all":
-        log("    深检  跳过（机房 IP）")
-        return
     if rep.hosting is None and opts.deep != "all":
         log("    深检  跳过（未判定机房/住宅）")
         return
+    light_dc = rep.hosting is True and opts.deep != "all"
 
     deep = DeepCheck()
     deep.ippure = check_ippure(proxy)
-    deep.iplark = check_iplark(proxy)
-    deep.ping0 = check_ping0(primary_ip, proxy)
-    deep.scamalytics = check_scamalytics(primary_ip, proxy)
-    if opts.ipqs_key:
-        deep.ipqs = check_ipqs(primary_ip, opts.ipqs_key, proxy)
-    if opts.abuseipdb_key:
-        deep.abuseipdb = check_abuseipdb(primary_ip, opts.abuseipdb_key, proxy)
+    if not light_dc:
+        deep.iplark = check_iplark(proxy)
+        deep.ping0 = check_ping0(primary_ip, proxy)
+        deep.scamalytics = check_scamalytics(primary_ip, proxy)
+        if opts.ipqs_key:
+            deep.ipqs = check_ipqs(primary_ip, opts.ipqs_key, proxy)
+        if opts.abuseipdb_key:
+            deep.abuseipdb = check_abuseipdb(primary_ip, opts.abuseipdb_key, proxy)
     rep.deep = deep
+    if light_dc:
+        score = (deep.ippure or {}).get("fraud_score")
+        log(f"    深检  机房仅 IPPure 风控{score if score is not None else '?'}%（跳过 ping0 网页）")
+        return
 
     p0 = deep.ping0 or {}
     sc = deep.scamalytics or {}

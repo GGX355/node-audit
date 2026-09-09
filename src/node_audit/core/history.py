@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 
 # 每次改表结构 +1，并在 _MIGRATIONS 里追加对应步骤
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # 相对上次：速度下降 ≥ 此比例，或 RTT 翻倍 → 整行标红置顶
 SPEED_DROP_THRESHOLD = 0.4
@@ -74,6 +74,12 @@ CREATE TABLE IF NOT EXISTS results(
 );
 CREATE INDEX IF NOT EXISTS idx_results_node ON results(node_name, created_at);
 CREATE INDEX IF NOT EXISTS idx_results_run ON results(run_id);
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_at TEXT,
+  last_seen_at TEXT
+);
 """
 
 
@@ -92,12 +98,38 @@ def _migrate_v3(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "results", "exit_ip6", "TEXT")
 
 
+def _migrate_v4(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS subscriptions (
+             id TEXT PRIMARY KEY,
+             name TEXT NOT NULL,
+             created_at TEXT,
+             last_seen_at TEXT
+           )"""
+    )
+    rows = conn.execute(
+        "SELECT subscription_id, MIN(created_at), MAX(created_at) FROM runs "
+        "WHERE subscription_id IS NOT NULL AND subscription_id != '' "
+        "GROUP BY subscription_id ORDER BY MIN(created_at), subscription_id"
+    ).fetchall()
+    n = conn.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0]
+    for sid, created, last in rows:
+        if conn.execute("SELECT 1 FROM subscriptions WHERE id=?", (sid,)).fetchone():
+            continue
+        n += 1
+        conn.execute(
+            "INSERT INTO subscriptions(id, name, created_at, last_seen_at) VALUES (?,?,?,?)",
+            (sid, f"配置{n}", created, last),
+        )
+
+
 # version -> list of SQL statements (or callables taking conn).
 # v1 即当前建表结果；以后加列写 v2、v3…，用 _add_column_if_missing 以免旧库炸。
 _MIGRATIONS: dict[int, list] = {
     1: [],
     2: [_migrate_v2],
     3: [_migrate_v3],
+    4: [_migrate_v4],
 }
 
 
@@ -195,6 +227,48 @@ def resolve_subscription(conn: sqlite3.Connection, names, exclude_run_id: str | 
     return _new_sub_id(), info
 
 
+def _next_config_name(conn: sqlite3.Connection) -> str:
+    n = conn.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0]
+    return f"配置{n + 1}"
+
+
+def ensure_subscription(conn: sqlite3.Connection, sid: str, created_at: str,
+                        last_seen_at: str, name: str | None = None) -> str:
+    """保证 subscriptions 里有这一条；可选把显示名改成 name。"""
+    wanted = (name or "").strip() or None
+    row = conn.execute("SELECT name FROM subscriptions WHERE id=?", (sid,)).fetchone()
+    if row:
+        display = wanted or row[0]
+        conn.execute(
+            "UPDATE subscriptions SET name=?, last_seen_at=? WHERE id=?",
+            (display, last_seen_at, sid),
+        )
+        return display
+    display = wanted or _next_config_name(conn)
+    conn.execute(
+        "INSERT INTO subscriptions(id, name, created_at, last_seen_at) VALUES (?,?,?,?)",
+        (sid, display, created_at, last_seen_at),
+    )
+    return display
+
+
+def list_subscriptions(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, name, created_at, last_seen_at FROM subscriptions "
+        "ORDER BY created_at, id"
+    ).fetchall()
+    out = []
+    for sid, name, created, last in rows:
+        out.append({
+            "id": sid,
+            "name": name or sid,
+            "created_at": created or "",
+            "last_at": last or "",
+            "nodes": 0,
+        })
+    return out
+
+
 def save_run(reports, meta: dict, db_path) -> dict:
     """写入一次审计。重复 run_id 会整体替换。
 
@@ -218,7 +292,14 @@ def save_run(reports, meta: dict, db_path) -> dict:
                 sid, info = resolve_subscription(
                     conn, names, exclude_run_id=meta.get("run_id")
                 )
+            display = ensure_subscription(
+                conn, sid, meta["generated_at"], meta["generated_at"],
+                name=meta.get("config_name"),
+            )
+            info["name"] = display
+            info["subscription_id"] = sid
             meta["subscription_id"] = sid
+            meta["subscription_name"] = display
             meta["subscription"] = info
             conn.execute(
                 "INSERT OR REPLACE INTO runs(run_id, mode, controller, created_at, subscription_id) "
@@ -379,14 +460,23 @@ def enrich_trend(runs: list, rows: list,
     return enriched
 
 
-def _empty_dashboard() -> dict:
+def _empty_slice() -> dict:
     return {
-        "meta": {"run_id": "", "generated_at": "", "controller": "", "mode": ""},
+        "meta": {"run_id": "", "generated_at": "", "controller": "", "mode": "",
+                 "subscription_id": "", "subscription_name": ""},
         "kpis": {"nodes": 0, "ok": 0, "residential": 0, "datacenter": 0,
                  "slow": 0, "ip_rotated": 0, "failed": 0},
         "runs": [],
         "nodes": [],
     }
+
+
+def _empty_dashboard() -> dict:
+    empty = _empty_slice()
+    empty["subscriptions"] = []
+    empty["current_id"] = ""
+    empty["by_sub"] = {}
+    return empty
 
 
 def _parse_json(s, default):
@@ -398,47 +488,37 @@ def _parse_json(s, default):
         return default
 
 
-def load_dashboard(db_path, runs_limit: int = 30) -> dict:
-    """控制台用的完整 payload：KPI + 历次 runs + 每节点 latest/series。"""
+def _fetch_run_rows(conn: sqlite3.Connection, sub_id: str | None, runs_limit: int):
+    if sub_id:
+        return conn.execute(
+            "SELECT run_id, mode, controller, created_at, subscription_id FROM runs "
+            "WHERE subscription_id=? ORDER BY created_at DESC, rowid DESC LIMIT ?",
+            (sub_id, runs_limit),
+        ).fetchall()[::-1]
+    return conn.execute(
+        "SELECT run_id, mode, controller, created_at, subscription_id FROM runs "
+        "ORDER BY created_at DESC, rowid DESC LIMIT ?",
+        (runs_limit,),
+    ).fetchall()[::-1]
+
+
+def _assemble_dashboard(run_rows, result_rows, sub_name: str = "") -> dict:
+    """把一次订阅的 runs/results 拼成控制台切片（不含 by_sub）。"""
     from .filters import region_from_name
 
-    conn = connect(db_path)
-    try:
-        sub_id = _current_subscription_id(conn)
-        if sub_id:
-            run_rows = conn.execute(
-                "SELECT run_id, mode, controller, created_at, subscription_id FROM runs "
-                "WHERE subscription_id=? ORDER BY created_at DESC, rowid DESC LIMIT ?",
-                (sub_id, runs_limit),
-            ).fetchall()[::-1]
-        else:
-            run_rows = conn.execute(
-                "SELECT run_id, mode, controller, created_at, subscription_id FROM runs "
-                "ORDER BY created_at DESC, rowid DESC LIMIT ?",
-                (runs_limit,),
-            ).fetchall()[::-1]
-        if not run_rows:
-            return _empty_dashboard()
-        runs = [{"id": r[0], "at": r[3]} for r in run_rows]
-        run_ids = [r["id"] for r in runs]
-        last = run_rows[-1]
-        meta = {
-            "run_id": last[0],
-            "mode": last[1] or "",
-            "controller": last[2] or "",
-            "generated_at": last[3] or "",
-            "subscription_id": last[4] or "",
-        }
-        marks = ",".join("?" * len(run_ids))
-        result_rows = conn.execute(
-            f"""SELECT node_name, run_id, rtt_min, speed_mbps, verdict, exit_ip, exit_ip6,
-                       risk_pct, country_code, city, isp, hosting, geo_match,
-                       services, notes, error, node_type, ptr, asn, rdap_org
-                FROM results WHERE run_id IN ({marks})""",
-            run_ids,
-        ).fetchall()
-    finally:
-        conn.close()
+    if not run_rows:
+        return _empty_slice()
+    runs = [{"id": r[0], "at": r[3]} for r in run_rows]
+    run_ids = [r["id"] for r in runs]
+    last = run_rows[-1]
+    meta = {
+        "run_id": last[0],
+        "mode": last[1] or "",
+        "controller": last[2] or "",
+        "generated_at": last[3] or "",
+        "subscription_id": last[4] or "",
+        "subscription_name": sub_name or "",
+    }
 
     by_node: dict[str, dict] = {}
     trend_rows_map: dict[str, dict] = {}
@@ -507,7 +587,6 @@ def load_dashboard(db_path, runs_limit: int = 30) -> dict:
             "series": series,
         })
 
-    latest_id = run_ids[-1]
     in_latest = [n for n in nodes if n.get("in_latest")]
     nodes.sort(key=lambda n: (not n.get("in_latest"), not n.get("degraded"), n["name"]))
 
@@ -535,3 +614,68 @@ def load_dashboard(db_path, runs_limit: int = 30) -> dict:
         "failed": sum(1 for n in pool if (n.get("latest") or {}).get("error")),
     }
     return {"meta": meta, "kpis": kpis, "runs": runs, "nodes": nodes}
+
+
+def _load_slice(conn: sqlite3.Connection, sub_id: str | None, runs_limit: int,
+                sub_name: str = "") -> dict:
+    run_rows = _fetch_run_rows(conn, sub_id, runs_limit)
+    if not run_rows:
+        sl = _empty_slice()
+        if sub_id:
+            sl["meta"]["subscription_id"] = sub_id
+            sl["meta"]["subscription_name"] = sub_name
+        return sl
+    run_ids = [r[0] for r in run_rows]
+    marks = ",".join("?" * len(run_ids))
+    result_rows = conn.execute(
+        f"""SELECT node_name, run_id, rtt_min, speed_mbps, verdict, exit_ip, exit_ip6,
+                   risk_pct, country_code, city, isp, hosting, geo_match,
+                   services, notes, error, node_type, ptr, asn, rdap_org
+            FROM results WHERE run_id IN ({marks})""",
+        run_ids,
+    ).fetchall()
+    return _assemble_dashboard(run_rows, result_rows, sub_name=sub_name)
+
+
+def load_dashboard(db_path, runs_limit: int = 30,
+                   subscription_id: str | None = None) -> dict:
+    """控制台 payload：当前配置的 KPI/节点，外加全部配置的 by_sub 供顶栏切换。"""
+    conn = connect(db_path)
+    try:
+        subs = list_subscriptions(conn)
+        current = subscription_id or _current_subscription_id(conn)
+        by_sub: dict[str, dict] = {}
+        if subs:
+            for s in subs:
+                sl = _load_slice(conn, s["id"], runs_limit, sub_name=s["name"])
+                by_sub[s["id"]] = sl
+                s["nodes"] = (sl.get("kpis") or {}).get("nodes", 0)
+                s["last_at"] = (sl.get("meta") or {}).get("generated_at") or s.get("last_at") or ""
+            if current not in by_sub:
+                current = subs[-1]["id"]
+            top = dict(by_sub[current])
+        else:
+            top = _load_slice(conn, current, runs_limit)
+            if not top["runs"]:
+                return _empty_dashboard()
+            sid = top["meta"].get("subscription_id") or current or ""
+            if sid:
+                by_sub[sid] = top
+                current = sid
+                subs = [{
+                    "id": sid,
+                    "name": top["meta"].get("subscription_name") or "配置1",
+                    "last_at": top["meta"].get("generated_at") or "",
+                    "nodes": top["kpis"]["nodes"],
+                }]
+    finally:
+        conn.close()
+
+    top["subscriptions"] = [
+        {"id": s["id"], "name": s["name"], "last_at": s.get("last_at") or "",
+         "nodes": s.get("nodes") or 0}
+        for s in subs
+    ]
+    top["current_id"] = current or ""
+    top["by_sub"] = by_sub
+    return top

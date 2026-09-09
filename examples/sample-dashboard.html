@@ -3,7 +3,7 @@
   --bg:#0c0d10;--panel:#12141a;--glass:rgba(255,255,255,.055);
   --stroke:rgba(255,255,255,.1);--text:#e8eaed;--muted:#8b93a1;
   --ok:#3dd68c;--bad:#ff6b6b;--warn:#ffc14a;--accent:#7aa2ff;
-  --res:#3dd68c;--dc:#ff6b6b;
+  --res:#3dd68c;--dc:#ffc14a;
   --shadow:0 8px 32px rgba(0,0,0,.35);
 }
 *{box-sizing:border-box}
@@ -30,6 +30,10 @@ header.top{
   border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer
 }
 .csv:hover{color:var(--text);border-color:rgba(122,162,255,.55)}
+select.sub{
+  border:1px solid var(--stroke);background:var(--panel);color:var(--text);
+  border-radius:8px;padding:4px 8px;font-size:12px;max-width:180px;cursor:pointer
+}
 .help-ov{
   display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:20;
   padding:24px 16px;overflow:auto
@@ -97,7 +101,8 @@ main.main{overflow:auto;padding:16px 18px 28px;display:flex;flex-direction:colum
 .ident .verdict{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;
   border:1px solid var(--stroke);margin-bottom:8px}
 .ident .verdict.res{color:var(--res);border-color:rgba(61,214,140,.35)}
-.ident .verdict.dc{color:var(--dc);border-color:rgba(255,107,107,.35)}
+.ident .verdict.dc{color:var(--dc);border-color:rgba(255,193,74,.45)}
+.ident .verdict.fail{color:var(--bad);border-color:rgba(255,107,107,.45)}
 .facts{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:13px}
 .facts b{color:var(--muted);font-weight:500;margin-right:6px}
 .svc{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
@@ -130,7 +135,7 @@ svg.spark{width:100%;height:72px;display:block}
   aside.side{border-right:0;border-bottom:1px solid var(--stroke);max-height:40vh}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
-</style></head><body><div id='na-app'><header class='top'><i class='mark'></i><span class='brand'>node-audit</span><span class='meta' id='meta'></span><button class='csv' id='csv' type='button'>导出 CSV</button><button class='csv' id='help-btn' type='button'>说明</button></header><div id='demo-banner' class='demo'>演示数据，不是你的订阅。跑 <code>node-audit audit --mode isolated --yes</code> 之后打开 <code>node-audit-report/latest.html</code> 才是当前订阅的全量节点。</div><div class='body'><aside class='side'><div class='side-tools'><input id='q' type='search' placeholder='搜索节点' autocomplete='off'><div class='chips'><button class='on' data-f='all'>全部</button><button data-f='res'>家宽</button><button data-f='dc'>机房</button><button data-f='slow'>变慢</button><button data-f='rot'>换 IP</button><button data-f='fail'>失败</button><button data-f='hist'>历史</button></div></div><div id='list'></div><div class='hint'>j / k 切换节点 · ? 使用说明 · 「历史」= 上次订阅残留</div></aside><main class='main'><div class='kpis' id='kpis'></div><div id='detail'></div></main></div></div><div id='help' class='help-ov' role='dialog' aria-label='使用说明'><div class='help-card'><div class='help-top'><b>使用说明</b><button class='csv' id='help-close' type='button'>关闭</button></div><p class='guide-ver'>node-audit 0.13.0</p>
+</style></head><body><div id='na-app'><header class='top'><i class='mark'></i><span class='brand'>node-audit</span><select class='sub' id='sub' title='切换配置'></select><span class='meta' id='meta'></span><button class='csv' id='csv' type='button'>导出 CSV</button><button class='csv' id='help-btn' type='button'>说明</button></header><div id='demo-banner' class='demo'>演示数据，不是你的订阅。跑 <code>node-audit audit --mode isolated --yes</code> 之后打开 <code>node-audit-report/latest.html</code> 才是当前订阅的全量节点。</div><div class='body'><aside class='side'><div class='side-tools'><input id='q' type='search' placeholder='搜索节点' autocomplete='off'><div class='chips'><button class='on' data-f='all'>全部</button><button data-f='res'>家宽</button><button data-f='dc'>机房</button><button data-f='slow'>变慢</button><button data-f='rot'>换 IP</button><button data-f='fail'>失败</button><button data-f='hist'>历史</button></div></div><div id='list'></div><div class='hint'>顶栏切配置 · j / k 切换节点 · ? 说明 · 「历史」= 这套里这次没测到的节点</div></aside><main class='main'><div class='kpis' id='kpis'></div><div id='detail'></div></main></div></div><div id='help' class='help-ov' role='dialog' aria-label='使用说明'><div class='help-card'><div class='help-top'><b>使用说明</b><button class='csv' id='help-close' type='button'>关闭</button></div><p class='guide-ver'>node-audit 0.14.0</p>
 <h2 id='g1'>这是什么</h2>
 <p>node-audit 会把你订阅里的<strong>每一个真实节点</strong>测一遍：出口 IP（含 IPv6）、是不是机房、PTR/ASN、延迟、速度、风控，以及 GPT / Netflix / TikTok 能不能用。</p>
 <p>默认用 <strong>isolated</strong>：在本机另起一个临时内核，<strong>不会切换你正在上网的代理</strong>。浏览器、下载、游戏都不受影响。</p>
@@ -157,6 +162,7 @@ svg.spark{width:100%;height:72px;display:block}
   </ul>
 </li>
 <li>直接按 Enter 等于选 1。</li>
+<li>选 2 / 4 打开报告或说明后<strong>不会退出</strong>，窗口还在，可以接着选 1。</li>
 </ol>
 <p>全量大约 <strong>十几到二十分钟</strong>（节点多会更久）。测速、深检都要联网。中途可 Ctrl+C，已测完的会保留。</p>
 <h2 id='g4'>跑完看什么</h2>
@@ -170,7 +176,7 @@ svg.spark{width:100%;height:72px;display:block}
 <tr><td><code>使用说明.html</code></td><td>本说明的副本。</td></tr>
 </table>
 <p>跑完一般会自动用浏览器打开 <code>latest.html</code>。也可以以后再双击这个文件，或软件菜单选 2。</p>
-<p><code>examples/sample-dashboard.html</code>（仓库里）是 <strong>3 个假节点的演示</strong>，不是你的订阅。</p>
+<p><code>examples/sample-dashboard.html</code>（仓库里）是 <strong>假数据演示</strong>，不是你的订阅。顶栏可切配置1 / 配置2。</p>
 <h2 id='g5'>控制台怎么看</h2>
 <ul>
 <li><strong>左侧</strong>：搜索框 + 筛选（家宽 / 机房 / 变慢 / 换 IP / 失败 / 历史）。键盘 <kbd>j</kbd> / <kbd>k</kbd> 上下切换节点。</li>
@@ -178,13 +184,14 @@ svg.spark{width:100%;height:72px;display:block}
 <li><strong>身份卡</strong>：出口 v4 / v6、归属、ISP、ASN、PTR、RDAP、类型（机房/住宅）、RTT、速度、风控、一致性，以及 GPT/NF/TT。</li>
 <li><strong>折线</strong>：延迟、速度、风控。横轴是日期（月-日）。鼠标悬停圆点可看该次的日期和数值。</li>
 <li><strong>出口 IP 时间轴</strong>：每次的 v4 / v6。变了会标黄「换」，下面有日期。</li>
+<li><strong>配置</strong>：顶栏下拉。两套 VPN 会自动分成「配置1 / 配置2」，点一下就换，不用重跑。</li>
 <li><strong>导出 CSV</strong>：右上角，导出当前这次测到的节点。</li>
 <li><strong>说明</strong>：右上角，打开与本文相同的使用说明。快捷键 <kbd>?</kbd>，<kbd>Esc</kbd> 关闭。</li>
 </ul>
-<p>「历史」筛选 = 换订阅之后，旧订阅残留的节点，不是这次测的。</p>
+<p>圆点颜色：家宽绿、机房黄、失败红。「历史」= <strong>当前这套</strong>里上次有、这次没测到的节点，不是另一套 VPN。</p>
 <h2 id='g6'>判定怎么读</h2>
 <ul>
-<li><strong>机房</strong>：ip-api 的 hosting=true，生死线。CDN / 云厂商出口几乎都是这个。</li>
+<li><strong>机房</strong>：ip-api 的 hosting=true，生死线。CDN / 云厂商出口几乎都是这个。侧栏黄点。也会显示 IPPure 风控% 和 GPT/NF/TT。</li>
 <li><strong>住宅候选 / 疑似真家宽</strong>：hosting=false，再用 ping0 看「家庭宽带 / 原生 / 风控%」。</li>
 <li><strong>疑似IDC</strong>：ip-api 说住宅，但 ping0 写成机房。</li>
 <li><strong>一致性 ✗</strong>：节点名写着某国，出口 IP 在另一国。</li>
@@ -204,8 +211,9 @@ svg.spark{width:100%;height:72px;display:block}
 <tr><td><code>workers</code></td><td>3</td><td>isolated 同时测几个节点（1–8）。测速会并行；ip-api 仍然排队。attach 无效。</td></tr>
 <tr><td><code>speed_bytes</code></td><td>10MB</td><td>测速下载量。名称含「勿跑大流量」的节点会自动降到 2MB。</td></tr>
 <tr><td><code>skip_speed</code></td><td>false</td><td>true = 不测速，会快很多。</td></tr>
-<tr><td><code>deep</code></td><td>auto</td><td>auto=只对住宅做网页深检；off=不做；all=每个都做（慢）。</td></tr>
+<tr><td><code>deep</code></td><td>auto</td><td>auto=住宅网页深检，机房只打 IPPure 风控分；off=不做；all=每个都做网页深检（慢）。</td></tr>
 <tr><td><code>services</code></td><td>all</td><td>all / none / openai,netflix,tiktok</td></tr>
+<tr><td><code>config_name</code></td><td>空</td><td>给当前这套节点起名（家里 / 公司）。空 = 自动 配置1、配置2。</td></tr>
 <tr><td><code>ipqs_key</code> / <code>abuseipdb_key</code></td><td>空</td><td>可选官方风控 API。没有也能跑。</td></tr>
 <tr><td><code>dir</code></td><td>空</td><td>报告目录。空 = 程序旁边的 node-audit-report。</td></tr>
 <tr><td><code>open_report</code></td><td>true</td><td>跑完是否自动打开 latest.html。</td></tr>
@@ -235,11 +243,11 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
 <dt>测了很久 / 想加快</dt>
 <dd>ini 里 <code>include</code> 只测一部分，或 <code>skip_speed = true</code>，或 <code>limit = 5</code> 先试 5 个。</dd>
 <dt>换了机场，趋势乱了</dt>
-<dd>节点名重叠不到 90% 会自动开一条新时间轴。换回旧机场还能对上原来那条。旧节点在控制台点「历史」。</dd>
+<dd>节点名重叠不到 90% 会<strong>自动新建配置</strong>（配置2、配置3…）。报告顶栏下拉可来回看。换回旧机场会对上原来那条。同一套里这次没测到的节点，点「历史」。</dd>
 <dt>exe 放在「下载」文件夹行不行？</dt>
 <dd>可以。路径不是问题。很多节点「失败」通常是节点本身连不上，或 ip-api 免费接口被该出口限流（每分钟约 45 次）。0.11 起会再用 ipify / IPPure 兜底。</dd>
 <dt>为什么 ping0 没出结果？</dt>
-<dd>两件事：① <code>deep = auto</code> 时<strong>机房节点默认不跑网页深检</strong>（hosting=true 已经够判机房）。② ping0.cc / scamalytics 网页经常反爬，扒首页会空。0.11 起改查 <code>ping0.cc/ip/地址</code>，并加上 <strong>IPPure JSON</strong>（无验证码，有风险分/是否住宅）和 iplark JSON。不会加 ipjiance.com——要写验证码，自动化跑不了。</dd>
+<dd>两件事：① <code>deep = auto</code> 时<strong>机房不跑 ping0 网页</strong>（反爬、慢），但会打 IPPure 风控分，判定类似「机房·风控23%」，GPT/NF/TT 照样测。② ping0.cc / scamalytics 网页经常反爬。0.11 起改查 <code>ping0.cc/ip/地址</code>，并加上 IPPure / iplark JSON。不会加 ipjiance.com——要写验证码。</dd>
 <dt>本机没有 IPv6</dt>
 <dd>没关系。探测走节点的 HTTP 代理，不要求你电脑有 IPv6。</dd>
 <dt>GPT / NF / TT 有时是「未知」</dt>
@@ -254,11 +262,18 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
 <li>临时内核只监听 <code>127.0.0.1</code>，不向局域网开放。</li>
 <li>IPQS 的 API key 走直连，不送进被测节点。</li>
 <li>「剩余流量 / 套餐到期」这类信息卡、DIRECT、代理组会自动跳过。</li>
-</ul></div></div><script type='application/json' id='na-data'>{"meta":{"run_id":"20260908-041200","generated_at":"2026-09-08T04:12:00","controller":"demo","mode":"isolated","demo":true},"kpis":{"nodes":3,"ok":3,"residential":2,"datacenter":1,"slow":1,"ip_rotated":1,"failed":0},"runs":[{"id":"r1","at":"2026-09-06T04:00:00"},{"id":"r2","at":"2026-09-07T04:00:00"},{"id":"r3","at":"2026-09-08T04:12:00"}],"nodes":[{"name":"台湾家宽-1","region":"台湾","verdict":"疑似真家宽·原生·风控18%","degraded":true,"ip_rotated":true,"in_latest":true,"latest":{"exit_ip":"36.2.2.2","exit_ip6":"2001:db8:1::2","country":"TW","city":"Taipei","isp":"Chunghwa Telecom","asn":"AS3462","ptr":"36-2-2-2.hinet.net","rdap_org":"Chunghwa Telecom","rtt":90,"speed":20.0,"risk_pct":18,"hosting":false,"geo_match":"match","services":{"openai":{"status":"ok","region":"TW"},"netflix":{"status":"full","region":"TW"},"tiktok":{"status":"ok"}},"notes":["RTT 超出合理上限","同时有 v6 出口 2001:db8:1::2"],"error":null},"series":{"rtt":[40,42,90],"speed":[50.0,48.0,20.0],"risk":[7,7,18],"ip":["36.1.1.1","36.1.1.1","36.2.2.2"],"ip6":["2001:db8:1::1","2001:db8:1::1","2001:db8:1::2"]}},{"name":"2x专线-日本-1","region":"日本","verdict":"机房","degraded":false,"ip_rotated":false,"in_latest":true,"latest":{"exit_ip":"52.196.115.92","exit_ip6":"2001:db8:2::52","country":"JP","city":"Tokyo","isp":"Amazon","asn":"AS16509","ptr":"ec2-52-196-115-92.ap-northeast-1.compute.amazonaws.com","rdap_org":"Amazon Technologies","rtt":80,"speed":95.8,"risk_pct":null,"hosting":true,"geo_match":"match","services":{"openai":{"status":"ok"},"netflix":{"status":"full","region":"JP"},"tiktok":{"status":"ok"}},"notes":["同时有 v6 出口 2001:db8:2::52"],"error":null},"series":{"rtt":[78,81,80],"speed":[90.0,93.0,95.8],"risk":[null,null,null],"ip":["52.196.115.92","52.196.115.92","52.196.115.92"],"ip6":["2001:db8:2::52","2001:db8:2::52","2001:db8:2::52"]}},{"name":"香港原生-1","region":"香港","verdict":"疑似真家宽·原生·风控4%","degraded":false,"ip_rotated":false,"in_latest":true,"latest":{"exit_ip":"14.0.1.8","exit_ip6":null,"country":"HK","city":"Hong Kong","isp":"HGC","asn":"AS9304","ptr":null,"rdap_org":"HGC","rtt":28,"speed":22.4,"risk_pct":4,"hosting":false,"geo_match":"match","services":{"openai":{"status":"ok","region":"HK"},"netflix":{"status":"original"},"tiktok":{"status":"captcha"}},"notes":[],"error":null},"series":{"rtt":[30,27,28],"speed":[21.0,22.1,22.4],"risk":[5,4,4],"ip":["14.0.1.8","14.0.1.8","14.0.1.8"],"ip6":[null,null,null]}}]}</script><script>
+</ul></div></div><script type='application/json' id='na-data'>{"meta":{"run_id":"20260908-041200","generated_at":"2026-09-08T04:12:00","controller":"demo","mode":"isolated","demo":true,"subscription_id":"sub-demo-1","subscription_name":"配置1"},"kpis":{"nodes":4,"ok":3,"residential":2,"datacenter":1,"slow":1,"ip_rotated":1,"failed":1},"runs":[{"id":"r1","at":"2026-09-06T04:00:00"},{"id":"r2","at":"2026-09-07T04:00:00"},{"id":"r3","at":"2026-09-08T04:12:00"}],"nodes":[{"name":"台湾家宽-1","region":"台湾","verdict":"疑似真家宽·原生·风控18%","degraded":true,"ip_rotated":true,"in_latest":true,"latest":{"exit_ip":"36.2.2.2","exit_ip6":"2001:db8:1::2","country":"TW","city":"Taipei","isp":"Chunghwa Telecom","asn":"AS3462","ptr":"36-2-2-2.hinet.net","rdap_org":"Chunghwa Telecom","rtt":90,"speed":20.0,"risk_pct":18,"hosting":false,"geo_match":"match","services":{"openai":{"status":"ok","region":"TW"},"netflix":{"status":"full","region":"TW"},"tiktok":{"status":"ok"}},"notes":["RTT 超出合理上限","同时有 v6 出口 2001:db8:1::2"],"error":null},"series":{"rtt":[40,42,90],"speed":[50.0,48.0,20.0],"risk":[7,7,18],"ip":["36.1.1.1","36.1.1.1","36.2.2.2"],"ip6":["2001:db8:1::1","2001:db8:1::1","2001:db8:1::2"]}},{"name":"2x专线-日本-1","region":"日本","verdict":"机房·风控23%","degraded":false,"ip_rotated":false,"in_latest":true,"latest":{"exit_ip":"52.196.115.92","exit_ip6":"2001:db8:2::52","country":"JP","city":"Tokyo","isp":"Amazon","asn":"AS16509","ptr":"ec2-52-196-115-92.ap-northeast-1.compute.amazonaws.com","rdap_org":"Amazon Technologies","rtt":80,"speed":95.8,"risk_pct":23,"hosting":true,"geo_match":"match","services":{"openai":{"status":"ok"},"netflix":{"status":"full","region":"JP"},"tiktok":{"status":"ok"}},"notes":["同时有 v6 出口 2001:db8:2::52"],"error":null},"series":{"rtt":[78,81,80],"speed":[90.0,93.0,95.8],"risk":[20,22,23],"ip":["52.196.115.92","52.196.115.92","52.196.115.92"],"ip6":["2001:db8:2::52","2001:db8:2::52","2001:db8:2::52"]}},{"name":"香港原生-1","region":"香港","verdict":"疑似真家宽·原生·风控4%","degraded":false,"ip_rotated":false,"in_latest":true,"latest":{"exit_ip":"14.0.1.8","exit_ip6":null,"country":"HK","city":"Hong Kong","isp":"HGC","asn":"AS9304","ptr":null,"rdap_org":"HGC","rtt":28,"speed":22.4,"risk_pct":4,"hosting":false,"geo_match":"match","services":{"openai":{"status":"ok","region":"HK"},"netflix":{"status":"original"},"tiktok":{"status":"captcha"}},"notes":[],"error":null},"series":{"rtt":[30,27,28],"speed":[21.0,22.1,22.4],"risk":[5,4,4],"ip":["14.0.1.8","14.0.1.8","14.0.1.8"],"ip6":[null,null,null]}},{"name":"新加坡-挂了","region":"新加坡","verdict":"失败","degraded":false,"ip_rotated":false,"in_latest":true,"latest":{"exit_ip":null,"exit_ip6":null,"country":null,"city":null,"isp":null,"asn":null,"ptr":null,"rdap_org":null,"rtt":null,"speed":null,"risk_pct":null,"hosting":null,"geo_match":"unknown","services":{},"notes":[],"error":"无法通过该节点获取出口 IP"},"series":{"rtt":[null,null,null],"speed":[null,null,null],"risk":[null,null,null],"ip":[null,null,null],"ip6":[null,null,null]}}],"subscriptions":[{"id":"sub-demo-1","name":"配置1","last_at":"2026-09-08T04:12:00","nodes":4},{"id":"sub-demo-2","name":"配置2","last_at":"2026-09-07T12:00:00","nodes":2}],"current_id":"sub-demo-1","by_sub":{"sub-demo-1":{"meta":{"run_id":"20260908-041200","generated_at":"2026-09-08T04:12:00","controller":"demo","mode":"isolated","demo":true,"subscription_id":"sub-demo-1","subscription_name":"配置1"},"kpis":{"nodes":4,"ok":3,"residential":2,"datacenter":1,"slow":1,"ip_rotated":1,"failed":1},"runs":[{"id":"r1","at":"2026-09-06T04:00:00"},{"id":"r2","at":"2026-09-07T04:00:00"},{"id":"r3","at":"2026-09-08T04:12:00"}],"nodes":[{"name":"台湾家宽-1","region":"台湾","verdict":"疑似真家宽·原生·风控18%","degraded":true,"ip_rotated":true,"in_latest":true,"latest":{"exit_ip":"36.2.2.2","exit_ip6":"2001:db8:1::2","country":"TW","city":"Taipei","isp":"Chunghwa Telecom","asn":"AS3462","ptr":"36-2-2-2.hinet.net","rdap_org":"Chunghwa Telecom","rtt":90,"speed":20.0,"risk_pct":18,"hosting":false,"geo_match":"match","services":{"openai":{"status":"ok","region":"TW"},"netflix":{"status":"full","region":"TW"},"tiktok":{"status":"ok"}},"notes":["RTT 超出合理上限","同时有 v6 出口 2001:db8:1::2"],"error":null},"series":{"rtt":[40,42,90],"speed":[50.0,48.0,20.0],"risk":[7,7,18],"ip":["36.1.1.1","36.1.1.1","36.2.2.2"],"ip6":["2001:db8:1::1","2001:db8:1::1","2001:db8:1::2"]}},{"name":"2x专线-日本-1","region":"日本","verdict":"机房·风控23%","degraded":false,"ip_rotated":false,"in_latest":true,"latest":{"exit_ip":"52.196.115.92","exit_ip6":"2001:db8:2::52","country":"JP","city":"Tokyo","isp":"Amazon","asn":"AS16509","ptr":"ec2-52-196-115-92.ap-northeast-1.compute.amazonaws.com","rdap_org":"Amazon Technologies","rtt":80,"speed":95.8,"risk_pct":23,"hosting":true,"geo_match":"match","services":{"openai":{"status":"ok"},"netflix":{"status":"full","region":"JP"},"tiktok":{"status":"ok"}},"notes":["同时有 v6 出口 2001:db8:2::52"],"error":null},"series":{"rtt":[78,81,80],"speed":[90.0,93.0,95.8],"risk":[20,22,23],"ip":["52.196.115.92","52.196.115.92","52.196.115.92"],"ip6":["2001:db8:2::52","2001:db8:2::52","2001:db8:2::52"]}},{"name":"香港原生-1","region":"香港","verdict":"疑似真家宽·原生·风控4%","degraded":false,"ip_rotated":false,"in_latest":true,"latest":{"exit_ip":"14.0.1.8","exit_ip6":null,"country":"HK","city":"Hong Kong","isp":"HGC","asn":"AS9304","ptr":null,"rdap_org":"HGC","rtt":28,"speed":22.4,"risk_pct":4,"hosting":false,"geo_match":"match","services":{"openai":{"status":"ok","region":"HK"},"netflix":{"status":"original"},"tiktok":{"status":"captcha"}},"notes":[],"error":null},"series":{"rtt":[30,27,28],"speed":[21.0,22.1,22.4],"risk":[5,4,4],"ip":["14.0.1.8","14.0.1.8","14.0.1.8"],"ip6":[null,null,null]}},{"name":"新加坡-挂了","region":"新加坡","verdict":"失败","degraded":false,"ip_rotated":false,"in_latest":true,"latest":{"exit_ip":null,"exit_ip6":null,"country":null,"city":null,"isp":null,"asn":null,"ptr":null,"rdap_org":null,"rtt":null,"speed":null,"risk_pct":null,"hosting":null,"geo_match":"unknown","services":{},"notes":[],"error":"无法通过该节点获取出口 IP"},"series":{"rtt":[null,null,null],"speed":[null,null,null],"risk":[null,null,null],"ip":[null,null,null],"ip6":[null,null,null]}}]},"sub-demo-2":{"meta":{"run_id":"20260907-120000","generated_at":"2026-09-07T12:00:00","controller":"demo","mode":"isolated","demo":true,"subscription_id":"sub-demo-2","subscription_name":"配置2"},"kpis":{"nodes":2,"ok":2,"residential":1,"datacenter":1,"slow":0,"ip_rotated":0,"failed":0},"runs":[{"id":"s1","at":"2026-09-07T12:00:00"}],"nodes":[{"name":"美国家宽-1","region":"美国","verdict":"疑似真家宽·原生·风控9%","degraded":false,"ip_rotated":false,"in_latest":true,"latest":{"exit_ip":"8.8.4.4","exit_ip6":null,"country":"US","city":"Los Angeles","isp":"Spectrum","asn":"AS20001","ptr":null,"rdap_org":"Charter","rtt":180,"speed":12.0,"risk_pct":9,"hosting":false,"geo_match":"match","services":{"openai":{"status":"ok"},"netflix":{"status":"full","region":"US"},"tiktok":{"status":"ok"}},"notes":[],"error":null},"series":{"rtt":[180],"speed":[12.0],"risk":[9],"ip":["8.8.4.4"],"ip6":[null]}},{"name":"美西专线-1","region":"美国","verdict":"机房·风控41%","degraded":false,"ip_rotated":false,"in_latest":true,"latest":{"exit_ip":"3.3.3.3","exit_ip6":null,"country":"US","city":"Ashburn","isp":"Amazon","asn":"AS16509","ptr":null,"rdap_org":"Amazon","rtt":210,"speed":80.0,"risk_pct":41,"hosting":true,"geo_match":"match","services":{"openai":{"status":"ok"},"netflix":{"status":"blocked"},"tiktok":{"status":"captcha"}},"notes":[],"error":null},"series":{"rtt":[210],"speed":[80.0],"risk":[41],"ip":["3.3.3.3"],"ip6":[null]}}]}}}</script><script>
 (function(){
   var box = document.getElementById("na-data");
-  var data = {meta:{},kpis:{},runs:[],nodes:[]};
-  try { data = JSON.parse(box.textContent || "{}"); } catch (e) {}
+  var raw = {meta:{},kpis:{},runs:[],nodes:[],subscriptions:[],current_id:"",by_sub:{}};
+  try { raw = JSON.parse(box.textContent || "{}"); } catch (e) {}
+  var currentId = raw.current_id || "";
+  function activeData(){
+    var by = raw.by_sub || {};
+    if (currentId && by[currentId]) return by[currentId];
+    return raw;
+  }
+  var data = activeData();
   var q = "", filter = "all", selected = ((data.nodes||[])[0]||{}).name || "";
 
   function $(id){ return document.getElementById(id); }
@@ -266,10 +281,11 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
     return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   }
   function hostingClass(n){
-    var h = (n.latest||{}).hosting;
-    if ((n.latest||{}).error) return "fail";
-    if (h === true || /机房|IDC/.test(n.verdict||"")) return "dc";
-    if (h === false || /家宽/.test(n.verdict||"")) return "res";
+    var L = n.latest||{};
+    var v = n.verdict||"";
+    if (L.error || /^失败/.test(v) || /未知/.test(v)) return "fail";
+    if (L.hosting === true || /机房|IDC/.test(v)) return "dc";
+    if (L.hosting === false || /家宽/.test(v)) return "res";
     return "";
   }
   function current(n){ return n.in_latest !== false; }
@@ -424,7 +440,7 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
     if (!n){ el.innerHTML='<div class="empty">左侧选一个节点</div>'; return; }
     var L=n.latest||{};
     var hc=hostingClass(n);
-    var vcls = hc==="dc"?"dc":(hc==="res"?"res":"");
+    var vcls = hc==="dc"?"dc":(hc==="res"?"res":(hc==="fail"?"fail":""));
     el.innerHTML =
       '<div class="card ident">'
       +'<div class="title">'+esc(n.name)+'</div>'
@@ -456,16 +472,34 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
       +'<div class="card"><h3>出口 IP 时间轴</h3>'+ipFlow(n.series, data.runs)+'</div>';
   }
 
+  function renderSubSelect(){
+    var el=$("sub");
+    if (!el) return;
+    var subs = raw.subscriptions || [];
+    if (!subs.length && currentId){
+      subs = [{id: currentId, name: (data.meta||{}).subscription_name || "配置1"}];
+    }
+    var html = subs.map(function(s){
+      var label = (s.name||s.id||"配置") + (s.nodes!=null ? " · "+s.nodes+"节点" : "");
+      return '<option value="'+esc(s.id)+'"'+(s.id===currentId?" selected":"")+'>'+esc(label)+'</option>';
+    }).join("");
+    el.innerHTML = html || '<option value="">配置1</option>';
+    el.disabled = subs.length <= 1;
+  }
   function render(){
+    data = activeData();
     var m=data.meta||{};
     var k=data.kpis||{};
     var hist=(data.nodes||[]).filter(function(n){ return n.in_latest===false; }).length;
-    $("meta").textContent = [m.generated_at||m.run_id||"—", m.mode||"",
+    $("meta").textContent = [
+      m.subscription_name || "",
+      m.generated_at||m.run_id||"—", m.mode||"",
       (k.nodes!=null?k.nodes:(data.nodes||[]).length)+" 节点",
-      hist? hist+" 个未测":""].filter(Boolean).join(" · ");
+      hist? hist+" 个未测":""
+    ].filter(Boolean).join(" · ");
     var ban=$("demo-banner");
-    if (ban) ban.classList.toggle("on", !!(m.demo));
-    renderKpis(); renderList(); renderDetail();
+    if (ban) ban.classList.toggle("on", !!(m.demo || raw.meta && raw.meta.demo));
+    renderSubSelect(); renderKpis(); renderList(); renderDetail();
   }
 
   function csvCell(s){
@@ -499,6 +533,18 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
   if (helpClose) helpClose.addEventListener("click", closeHelp);
   var helpOv = $("help");
   if (helpOv) helpOv.addEventListener("click", function(e){ if (e.target===$("help")) closeHelp(); });
+  var subEl = $("sub");
+  if (subEl) subEl.addEventListener("change", function(){
+    currentId = subEl.value;
+    data = activeData();
+    selected = ((data.nodes||[])[0]||{}).name || "";
+    q = ""; filter = "all";
+    var inp=$("q"); if (inp) inp.value="";
+    document.querySelectorAll(".chips button").forEach(function(b){
+      b.classList.toggle("on", b.getAttribute("data-f")==="all");
+    });
+    render();
+  });
   $("q").addEventListener("input", function(e){ q=e.target.value; render(); });
   document.querySelectorAll(".chips button").forEach(function(btn){
     btn.addEventListener("click", function(){

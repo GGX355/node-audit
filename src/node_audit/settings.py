@@ -26,10 +26,13 @@ speed_bytes = 10MB
 speed_max_seconds = 60
 skip_speed = false
 
-# auto = 只对住宅候选做网页深检；off = 不做；all = 每个节点都做。
+# auto = 住宅网页深检 + 机房只打 IPPure 风控分；off = 不做；all = 每个都做网页深检。
 deep = auto
 # all / none / openai,netflix,tiktok
 services = all
+
+# 给当前这套节点起名，例如 家里 / 公司。留空 = 自动 配置1、配置2。
+config_name =
 
 # 可选官方风控 API（没有就留空，不影响主流程）。
 ipqs_key =
@@ -59,6 +62,7 @@ class Settings:
     abuseipdb_key: str | None = None
     out: str | None = None
     open_report: bool = True
+    config_name: str | None = None
 
 
 def _blank(v: str | None) -> str | None:
@@ -121,6 +125,7 @@ def load_settings(path: Path | None) -> Settings:
         s.services = services
     s.ipqs_key = _blank(a.get("ipqs_key") if hasattr(a, "get") else None)
     s.abuseipdb_key = _blank(a.get("abuseipdb_key") if hasattr(a, "get") else None)
+    s.config_name = _blank(a.get("config_name") if hasattr(a, "get") else None)
     s.out = _blank(o.get("dir") if hasattr(o, "get") else None)
     s.open_report = _as_bool(o.get("open_report") if hasattr(o, "get") else None, True)
     return s

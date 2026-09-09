@@ -51,7 +51,7 @@ _SECTIONS: list[tuple[str, str]] = [
 <tr><td><code>使用说明.html</code></td><td>本说明的副本。</td></tr>
 </table>
 <p>跑完一般会自动用浏览器打开 <code>latest.html</code>。也可以以后再双击这个文件，或软件菜单选 2。</p>
-<p><code>examples/sample-dashboard.html</code>（仓库里）是 <strong>3 个假节点的演示</strong>，不是你的订阅。</p>
+<p><code>examples/sample-dashboard.html</code>（仓库里）是 <strong>假数据演示</strong>，不是你的订阅。顶栏可切配置1 / 配置2。</p>
 """),
     ("控制台怎么看", """
 <ul>
@@ -60,14 +60,15 @@ _SECTIONS: list[tuple[str, str]] = [
 <li><strong>身份卡</strong>：出口 v4 / v6、归属、ISP、ASN、PTR、RDAP、类型（机房/住宅）、RTT、速度、风控、一致性，以及 GPT/NF/TT。</li>
 <li><strong>折线</strong>：延迟、速度、风控。横轴是日期（月-日）。鼠标悬停圆点可看该次的日期和数值。</li>
 <li><strong>出口 IP 时间轴</strong>：每次的 v4 / v6。变了会标黄「换」，下面有日期。</li>
+<li><strong>配置</strong>：顶栏下拉。两套 VPN 会自动分成「配置1 / 配置2」，点一下就换，不用重跑。</li>
 <li><strong>导出 CSV</strong>：右上角，导出当前这次测到的节点。</li>
 <li><strong>说明</strong>：右上角，打开与本文相同的使用说明。快捷键 <kbd>?</kbd>，<kbd>Esc</kbd> 关闭。</li>
 </ul>
-<p>「历史」筛选 = 换订阅之后，旧订阅残留的节点，不是这次测的。</p>
+<p>圆点颜色：家宽绿、机房黄、失败红。「历史」= <strong>当前这套</strong>里上次有、这次没测到的节点，不是另一套 VPN。</p>
 """),
     ("判定怎么读", """
 <ul>
-<li><strong>机房</strong>：ip-api 的 hosting=true，生死线。CDN / 云厂商出口几乎都是这个。</li>
+<li><strong>机房</strong>：ip-api 的 hosting=true，生死线。CDN / 云厂商出口几乎都是这个。侧栏黄点。也会显示 IPPure 风控% 和 GPT/NF/TT。</li>
 <li><strong>住宅候选 / 疑似真家宽</strong>：hosting=false，再用 ping0 看「家庭宽带 / 原生 / 风控%」。</li>
 <li><strong>疑似IDC</strong>：ip-api 说住宅，但 ping0 写成机房。</li>
 <li><strong>一致性 ✗</strong>：节点名写着某国，出口 IP 在另一国。</li>
@@ -88,8 +89,9 @@ _SECTIONS: list[tuple[str, str]] = [
 <tr><td><code>workers</code></td><td>3</td><td>isolated 同时测几个节点（1–8）。测速会并行；ip-api 仍然排队。attach 无效。</td></tr>
 <tr><td><code>speed_bytes</code></td><td>10MB</td><td>测速下载量。名称含「勿跑大流量」的节点会自动降到 2MB。</td></tr>
 <tr><td><code>skip_speed</code></td><td>false</td><td>true = 不测速，会快很多。</td></tr>
-<tr><td><code>deep</code></td><td>auto</td><td>auto=只对住宅做网页深检；off=不做；all=每个都做（慢）。</td></tr>
+<tr><td><code>deep</code></td><td>auto</td><td>auto=住宅网页深检，机房只打 IPPure 风控分；off=不做；all=每个都做网页深检（慢）。</td></tr>
 <tr><td><code>services</code></td><td>all</td><td>all / none / openai,netflix,tiktok</td></tr>
+<tr><td><code>config_name</code></td><td>空</td><td>给当前这套节点起名（家里 / 公司）。空 = 自动 配置1、配置2。</td></tr>
 <tr><td><code>ipqs_key</code> / <code>abuseipdb_key</code></td><td>空</td><td>可选官方风控 API。没有也能跑。</td></tr>
 <tr><td><code>dir</code></td><td>空</td><td>报告目录。空 = 程序旁边的 node-audit-report。</td></tr>
 <tr><td><code>open_report</code></td><td>true</td><td>跑完是否自动打开 latest.html。</td></tr>
@@ -122,11 +124,11 @@ node-audit.exe serve --open      本机打开控制台（只听 127.0.0.1）</pr
 <dt>测了很久 / 想加快</dt>
 <dd>ini 里 <code>include</code> 只测一部分，或 <code>skip_speed = true</code>，或 <code>limit = 5</code> 先试 5 个。</dd>
 <dt>换了机场，趋势乱了</dt>
-<dd>节点名重叠不到 90% 会自动开一条新时间轴。换回旧机场还能对上原来那条。旧节点在控制台点「历史」。</dd>
+<dd>节点名重叠不到 90% 会<strong>自动新建配置</strong>（配置2、配置3…）。报告顶栏下拉可来回看。换回旧机场会对上原来那条。同一套里这次没测到的节点，点「历史」。</dd>
 <dt>exe 放在「下载」文件夹行不行？</dt>
 <dd>可以。路径不是问题。很多节点「失败」通常是节点本身连不上，或 ip-api 免费接口被该出口限流（每分钟约 45 次）。0.11 起会再用 ipify / IPPure 兜底。</dd>
 <dt>为什么 ping0 没出结果？</dt>
-<dd>两件事：① <code>deep = auto</code> 时<strong>机房节点默认不跑网页深检</strong>（hosting=true 已经够判机房）。② ping0.cc / scamalytics 网页经常反爬，扒首页会空。0.11 起改查 <code>ping0.cc/ip/地址</code>，并加上 <strong>IPPure JSON</strong>（无验证码，有风险分/是否住宅）和 iplark JSON。不会加 ipjiance.com——要写验证码，自动化跑不了。</dd>
+<dd>两件事：① <code>deep = auto</code> 时<strong>机房不跑 ping0 网页</strong>（反爬、慢），但会打 IPPure 风控分，判定类似「机房·风控23%」，GPT/NF/TT 照样测。② ping0.cc / scamalytics 网页经常反爬。0.11 起改查 <code>ping0.cc/ip/地址</code>，并加上 IPPure / iplark JSON。不会加 ipjiance.com——要写验证码。</dd>
 <dt>本机没有 IPv6</dt>
 <dd>没关系。探测走节点的 HTTP 代理，不要求你电脑有 IPv6。</dd>
 <dt>GPT / NF / TT 有时是「未知」</dt>

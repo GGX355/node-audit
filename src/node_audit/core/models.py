@@ -108,6 +108,15 @@ def build_verdict(rep: NodeReport) -> tuple[str, list[str]]:
     # 类型判定（hosting 是生死线）
     if rep.hosting is True:
         verdict = "机房"
+        deep = rep.deep
+        if deep:
+            p0 = deep.ping0 or {}
+            ipu = deep.ippure or {}
+            risk = p0.get("risk_pct")
+            if risk is None:
+                risk = ipu.get("fraud_score")
+            if risk is not None:
+                verdict += f"·风控{risk}%"
     elif rep.hosting is False:
         verdict = "住宅候选"
         deep = rep.deep

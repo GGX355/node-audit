@@ -314,6 +314,9 @@ def _emit(reports, disc, args) -> None:
     meta = {"controller": disc.describe(), "mode": args.mode,
             "run_id": now,
             "generated_at": datetime.now().isoformat(timespec="seconds")}
+    cfg_name = getattr(args, "config_name", None)
+    if cfg_name:
+        meta["config_name"] = str(cfg_name).strip()
     write_json(reports, jpath, meta)
     write_markdown(reports, mpath, meta)
 
@@ -322,14 +325,14 @@ def _emit(reports, disc, args) -> None:
         from .core.history import load_dashboard, load_trend, save_run
         db_path = Path(args.db) if args.db else outdir / "history.db"
         sub = save_run(reports, meta, db_path)
+        name = sub.get("name") or "配置"
         if sub.get("same"):
-            print(f"订阅: 同一订阅（节点重叠 {sub['match']:.0%}，"
+            print(f"配置: {name}（同一套，节点重叠 {sub['match']:.0%}，"
                   f"{sub['overlap']}/{sub['prev_count']}）")
         elif sub.get("prev_count"):
-            print(f"订阅: 新订阅（与已知订阅最高重叠 {sub['match']:.0%}，"
-                  f"已隔离时间轴）")
+            print(f"配置: 新建 {name}（与已知最高重叠 {sub['match']:.0%}，已分开存）")
         else:
-            print("订阅: 首次记录")
+            print(f"配置: 首次记录 → {name}")
         trend = load_trend(db_path, runs_limit=args.trend_runs)
         from .report.html import write_html
         from .report.dashboard import write_dashboard
@@ -397,6 +400,7 @@ def _audit_ns_from_settings(settings) -> argparse.Namespace:
         no_history=False,
         dry_run=False,
         yes=True,
+        config_name=getattr(settings, "config_name", None),
     )
 
 
@@ -599,6 +603,8 @@ def main(argv=None) -> int:
     p_aud.add_argument("--no-history", action="store_true",
                        help="不写入历史库、不生成 HTML 趋势报告")
     p_aud.add_argument("--dry-run", action="store_true", help="只列出将测的节点，不切换不检测")
+    p_aud.add_argument("--config-name", default=None,
+                       help="给这次匹配到的配置起名（如 家里 / 公司）；默认自动叫 配置1、配置2")
     p_aud.add_argument("--yes", "-y", action="store_true", help="跳过切换前的确认提示")
     p_aud.set_defaults(func=cmd_audit)
 

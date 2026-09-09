@@ -17,6 +17,14 @@ def test_hosting_true_is_datacenter():
     assert notes == []
 
 
+def test_datacenter_ippure_appends_risk():
+    rep = _rep(region_code="JP", region_cn="日本", country_code="JP",
+               hosting=True, rtt_min=80,
+               deep=DeepCheck(ippure={"available": True, "fraud_score": 31}))
+    verdict, notes = build_verdict(rep)
+    assert verdict == "机房·风控31%"
+
+
 def test_residential_with_ping0_family():
     rep = _rep(region_code="TW", region_cn="台湾", country_code="TW",
                hosting=False,

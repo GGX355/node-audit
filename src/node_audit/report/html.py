@@ -37,7 +37,7 @@ th{background:#eef2f6;white-space:nowrap}
 tr:hover td{background:#f4f8fd}
 tr.degraded td{background:#fdecea}
 tr.degraded:hover td{background:#f8d7da}
-.dc{color:#b3261e;font-weight:600}.res{color:#1a7f37;font-weight:600}
+.dc{color:#b26a00;font-weight:600}.res{color:#1a7f37;font-weight:600}.fail{color:#b3261e;font-weight:600}
 .ok{color:#1a7f37}.bad{color:#b3261e}.warn{color:#b26a00}
 .trend{overflow-x:auto}
 .small{font-size:12px;color:#5b6b7b}
@@ -48,9 +48,12 @@ footer{margin-top:26px;color:#8a99a8;font-size:12px}
 
 
 def _verdict_class(verdict: str) -> str:
-    if "家宽" in verdict:
+    v = verdict or ""
+    if "失败" in v or "未知" in v:
+        return "fail"
+    if "家宽" in v:
         return "res"
-    if "机房" in verdict or "IDC" in verdict:
+    if "机房" in v or "IDC" in v:
         return "dc"
     return ""
 

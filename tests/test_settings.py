@@ -35,6 +35,7 @@ def test_write_template_and_defaults():
         assert s.speed_bytes == "10MB"
         assert s.skip_speed is False
         assert s.deep == "auto"
+        assert s.config_name is None
         assert s.open_report is True
 
 
@@ -50,6 +51,7 @@ def test_load_settings_overrides():
             "workers = 5\n"
             "deep = off\n"
             "services = none\n"
+            "config_name = 家里\n"
             "[output]\n"
             "dir = reports-out\n"
             "open_report = false\n",
@@ -63,6 +65,7 @@ def test_load_settings_overrides():
         assert s.workers == 5
         assert s.deep == "off"
         assert s.services == "none"
+        assert s.config_name == "家里"
         assert s.out == "reports-out"
         assert s.open_report is False
 

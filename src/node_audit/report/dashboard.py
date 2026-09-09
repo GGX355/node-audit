@@ -20,7 +20,7 @@ _CSS = r"""
   --bg:#0c0d10;--panel:#12141a;--glass:rgba(255,255,255,.055);
   --stroke:rgba(255,255,255,.1);--text:#e8eaed;--muted:#8b93a1;
   --ok:#3dd68c;--bad:#ff6b6b;--warn:#ffc14a;--accent:#7aa2ff;
-  --res:#3dd68c;--dc:#ff6b6b;
+  --res:#3dd68c;--dc:#ffc14a;
   --shadow:0 8px 32px rgba(0,0,0,.35);
 }
 *{box-sizing:border-box}
@@ -47,6 +47,10 @@ header.top{
   border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer
 }
 .csv:hover{color:var(--text);border-color:rgba(122,162,255,.55)}
+select.sub{
+  border:1px solid var(--stroke);background:var(--panel);color:var(--text);
+  border-radius:8px;padding:4px 8px;font-size:12px;max-width:180px;cursor:pointer
+}
 .help-ov{
   display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:20;
   padding:24px 16px;overflow:auto
@@ -114,7 +118,8 @@ main.main{overflow:auto;padding:16px 18px 28px;display:flex;flex-direction:colum
 .ident .verdict{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;
   border:1px solid var(--stroke);margin-bottom:8px}
 .ident .verdict.res{color:var(--res);border-color:rgba(61,214,140,.35)}
-.ident .verdict.dc{color:var(--dc);border-color:rgba(255,107,107,.35)}
+.ident .verdict.dc{color:var(--dc);border-color:rgba(255,193,74,.45)}
+.ident .verdict.fail{color:var(--bad);border-color:rgba(255,107,107,.45)}
 .facts{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:13px}
 .facts b{color:var(--muted);font-weight:500;margin-right:6px}
 .svc{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
@@ -152,8 +157,15 @@ svg.spark{width:100%;height:72px;display:block}
 _JS = r"""
 (function(){
   var box = document.getElementById("na-data");
-  var data = {meta:{},kpis:{},runs:[],nodes:[]};
-  try { data = JSON.parse(box.textContent || "{}"); } catch (e) {}
+  var raw = {meta:{},kpis:{},runs:[],nodes:[],subscriptions:[],current_id:"",by_sub:{}};
+  try { raw = JSON.parse(box.textContent || "{}"); } catch (e) {}
+  var currentId = raw.current_id || "";
+  function activeData(){
+    var by = raw.by_sub || {};
+    if (currentId && by[currentId]) return by[currentId];
+    return raw;
+  }
+  var data = activeData();
   var q = "", filter = "all", selected = ((data.nodes||[])[0]||{}).name || "";
 
   function $(id){ return document.getElementById(id); }
@@ -161,10 +173,11 @@ _JS = r"""
     return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
   }
   function hostingClass(n){
-    var h = (n.latest||{}).hosting;
-    if ((n.latest||{}).error) return "fail";
-    if (h === true || /机房|IDC/.test(n.verdict||"")) return "dc";
-    if (h === false || /家宽/.test(n.verdict||"")) return "res";
+    var L = n.latest||{};
+    var v = n.verdict||"";
+    if (L.error || /^失败/.test(v) || /未知/.test(v)) return "fail";
+    if (L.hosting === true || /机房|IDC/.test(v)) return "dc";
+    if (L.hosting === false || /家宽/.test(v)) return "res";
     return "";
   }
   function current(n){ return n.in_latest !== false; }
@@ -319,7 +332,7 @@ _JS = r"""
     if (!n){ el.innerHTML='<div class="empty">左侧选一个节点</div>'; return; }
     var L=n.latest||{};
     var hc=hostingClass(n);
-    var vcls = hc==="dc"?"dc":(hc==="res"?"res":"");
+    var vcls = hc==="dc"?"dc":(hc==="res"?"res":(hc==="fail"?"fail":""));
     el.innerHTML =
       '<div class="card ident">'
       +'<div class="title">'+esc(n.name)+'</div>'
@@ -351,16 +364,34 @@ _JS = r"""
       +'<div class="card"><h3>出口 IP 时间轴</h3>'+ipFlow(n.series, data.runs)+'</div>';
   }
 
+  function renderSubSelect(){
+    var el=$("sub");
+    if (!el) return;
+    var subs = raw.subscriptions || [];
+    if (!subs.length && currentId){
+      subs = [{id: currentId, name: (data.meta||{}).subscription_name || "配置1"}];
+    }
+    var html = subs.map(function(s){
+      var label = (s.name||s.id||"配置") + (s.nodes!=null ? " · "+s.nodes+"节点" : "");
+      return '<option value="'+esc(s.id)+'"'+(s.id===currentId?" selected":"")+'>'+esc(label)+'</option>';
+    }).join("");
+    el.innerHTML = html || '<option value="">配置1</option>';
+    el.disabled = subs.length <= 1;
+  }
   function render(){
+    data = activeData();
     var m=data.meta||{};
     var k=data.kpis||{};
     var hist=(data.nodes||[]).filter(function(n){ return n.in_latest===false; }).length;
-    $("meta").textContent = [m.generated_at||m.run_id||"—", m.mode||"",
+    $("meta").textContent = [
+      m.subscription_name || "",
+      m.generated_at||m.run_id||"—", m.mode||"",
       (k.nodes!=null?k.nodes:(data.nodes||[]).length)+" 节点",
-      hist? hist+" 个未测":""].filter(Boolean).join(" · ");
+      hist? hist+" 个未测":""
+    ].filter(Boolean).join(" · ");
     var ban=$("demo-banner");
-    if (ban) ban.classList.toggle("on", !!(m.demo));
-    renderKpis(); renderList(); renderDetail();
+    if (ban) ban.classList.toggle("on", !!(m.demo || raw.meta && raw.meta.demo));
+    renderSubSelect(); renderKpis(); renderList(); renderDetail();
   }
 
   function csvCell(s){
@@ -394,6 +425,18 @@ _JS = r"""
   if (helpClose) helpClose.addEventListener("click", closeHelp);
   var helpOv = $("help");
   if (helpOv) helpOv.addEventListener("click", function(e){ if (e.target===$("help")) closeHelp(); });
+  var subEl = $("sub");
+  if (subEl) subEl.addEventListener("change", function(){
+    currentId = subEl.value;
+    data = activeData();
+    selected = ((data.nodes||[])[0]||{}).name || "";
+    q = ""; filter = "all";
+    var inp=$("q"); if (inp) inp.value="";
+    document.querySelectorAll(".chips button").forEach(function(b){
+      b.classList.toggle("on", b.getAttribute("data-f")==="all");
+    });
+    render();
+  });
   $("q").addEventListener("input", function(e){ q=e.target.value; render(); });
   document.querySelectorAll(".chips button").forEach(function(btn){
     btn.addEventListener("click", function(){
@@ -430,6 +473,7 @@ def render_dashboard(payload: dict) -> str:
         f"<style>{_CSS}</style></head><body>"
         "<div id='na-app'>"
         "<header class='top'><i class='mark'></i><span class='brand'>node-audit</span>"
+        "<select class='sub' id='sub' title='切换配置'></select>"
         "<span class='meta' id='meta'></span>"
         "<button class='csv' id='csv' type='button'>导出 CSV</button>"
         "<button class='csv' id='help-btn' type='button'>说明</button></header>"
@@ -449,7 +493,7 @@ def render_dashboard(payload: dict) -> str:
         "<button data-f='hist'>历史</button>"
         "</div></div>"
         "<div id='list'></div>"
-        "<div class='hint'>j / k 切换节点 · ? 使用说明 · 「历史」= 上次订阅残留</div>"
+        "<div class='hint'>顶栏切配置 · j / k 切换节点 · ? 说明 · 「历史」= 这套里这次没测到的节点</div>"
         "</aside>"
         "<main class='main'><div class='kpis' id='kpis'></div>"
         "<div id='detail'></div></main>"
@@ -472,17 +516,19 @@ def write_dashboard(payload: dict, path) -> Path:
 
 def demo_payload() -> dict:
     """离线演示数据，供 examples/sample-dashboard.html 与测试使用。"""
-    return {
+    cfg1 = {
         "meta": {
             "run_id": "20260908-041200",
             "generated_at": "2026-09-08T04:12:00",
             "controller": "demo",
             "mode": "isolated",
             "demo": True,
+            "subscription_id": "sub-demo-1",
+            "subscription_name": "配置1",
         },
         "kpis": {
-            "nodes": 3, "ok": 3, "residential": 2, "datacenter": 1,
-            "slow": 1, "ip_rotated": 1, "failed": 0,
+            "nodes": 4, "ok": 3, "residential": 2, "datacenter": 1,
+            "slow": 1, "ip_rotated": 1, "failed": 1,
         },
         "runs": [
             {"id": "r1", "at": "2026-09-06T04:00:00"},
@@ -522,7 +568,7 @@ def demo_payload() -> dict:
             {
                 "name": "2x专线-日本-1",
                 "region": "日本",
-                "verdict": "机房",
+                "verdict": "机房·风控23%",
                 "degraded": False,
                 "ip_rotated": False,
                 "in_latest": True,
@@ -533,7 +579,7 @@ def demo_payload() -> dict:
                     "ptr": "ec2-52-196-115-92.ap-northeast-1.compute.amazonaws.com",
                     "rdap_org": "Amazon Technologies",
                     "rtt": 80, "speed": 95.8,
-                    "risk_pct": None, "hosting": True, "geo_match": "match",
+                    "risk_pct": 23, "hosting": True, "geo_match": "match",
                     "services": {
                         "openai": {"status": "ok"},
                         "netflix": {"status": "full", "region": "JP"},
@@ -544,7 +590,7 @@ def demo_payload() -> dict:
                 "series": {
                     "rtt": [78, 81, 80],
                     "speed": [90.0, 93.0, 95.8],
-                    "risk": [None, None, None],
+                    "risk": [20, 22, 23],
                     "ip": ["52.196.115.92", "52.196.115.92", "52.196.115.92"],
                     "ip6": ["2001:db8:2::52", "2001:db8:2::52", "2001:db8:2::52"],
                 },
@@ -578,5 +624,94 @@ def demo_payload() -> dict:
                     "ip6": [None, None, None],
                 },
             },
+            {
+                "name": "新加坡-挂了",
+                "region": "新加坡",
+                "verdict": "失败",
+                "degraded": False,
+                "ip_rotated": False,
+                "in_latest": True,
+                "latest": {
+                    "exit_ip": None, "exit_ip6": None,
+                    "country": None, "city": None,
+                    "isp": None, "asn": None, "ptr": None, "rdap_org": None,
+                    "rtt": None, "speed": None,
+                    "risk_pct": None, "hosting": None, "geo_match": "unknown",
+                    "services": {},
+                    "notes": [], "error": "无法通过该节点获取出口 IP",
+                },
+                "series": {
+                    "rtt": [None, None, None],
+                    "speed": [None, None, None],
+                    "risk": [None, None, None],
+                    "ip": [None, None, None],
+                    "ip6": [None, None, None],
+                },
+            },
         ],
+    }
+    cfg2 = {
+        "meta": {
+            "run_id": "20260907-120000",
+            "generated_at": "2026-09-07T12:00:00",
+            "controller": "demo",
+            "mode": "isolated",
+            "demo": True,
+            "subscription_id": "sub-demo-2",
+            "subscription_name": "配置2",
+        },
+        "kpis": {
+            "nodes": 2, "ok": 2, "residential": 1, "datacenter": 1,
+            "slow": 0, "ip_rotated": 0, "failed": 0,
+        },
+        "runs": [{"id": "s1", "at": "2026-09-07T12:00:00"}],
+        "nodes": [
+            {
+                "name": "美国家宽-1",
+                "region": "美国",
+                "verdict": "疑似真家宽·原生·风控9%",
+                "degraded": False, "ip_rotated": False, "in_latest": True,
+                "latest": {
+                    "exit_ip": "8.8.4.4", "exit_ip6": None,
+                    "country": "US", "city": "Los Angeles",
+                    "isp": "Spectrum", "asn": "AS20001",
+                    "ptr": None, "rdap_org": "Charter",
+                    "rtt": 180, "speed": 12.0,
+                    "risk_pct": 9, "hosting": False, "geo_match": "match",
+                    "services": {"openai": {"status": "ok"}, "netflix": {"status": "full", "region": "US"},
+                                 "tiktok": {"status": "ok"}},
+                    "notes": [], "error": None,
+                },
+                "series": {"rtt": [180], "speed": [12.0], "risk": [9],
+                           "ip": ["8.8.4.4"], "ip6": [None]},
+            },
+            {
+                "name": "美西专线-1",
+                "region": "美国",
+                "verdict": "机房·风控41%",
+                "degraded": False, "ip_rotated": False, "in_latest": True,
+                "latest": {
+                    "exit_ip": "3.3.3.3", "exit_ip6": None,
+                    "country": "US", "city": "Ashburn",
+                    "isp": "Amazon", "asn": "AS16509",
+                    "ptr": None, "rdap_org": "Amazon",
+                    "rtt": 210, "speed": 80.0,
+                    "risk_pct": 41, "hosting": True, "geo_match": "match",
+                    "services": {"openai": {"status": "ok"}, "netflix": {"status": "blocked"},
+                                 "tiktok": {"status": "captcha"}},
+                    "notes": [], "error": None,
+                },
+                "series": {"rtt": [210], "speed": [80.0], "risk": [41],
+                           "ip": ["3.3.3.3"], "ip6": [None]},
+            },
+        ],
+    }
+    return {
+        **cfg1,
+        "subscriptions": [
+            {"id": "sub-demo-1", "name": "配置1", "last_at": "2026-09-08T04:12:00", "nodes": 4},
+            {"id": "sub-demo-2", "name": "配置2", "last_at": "2026-09-07T12:00:00", "nodes": 2},
+        ],
+        "current_id": "sub-demo-1",
+        "by_sub": {"sub-demo-1": cfg1, "sub-demo-2": cfg2},
     }

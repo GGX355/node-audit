@@ -93,6 +93,10 @@ def test_switch_subscription_isolates_timeline():
         assert names == {"新机场-香港1"}
         assert payload["kpis"]["nodes"] == 1
         assert payload["nodes"][0]["in_latest"] is True
+        assert len(payload["subscriptions"]) == 2
+        assert len(payload["by_sub"]) == 2
+        old_id = next(s["id"] for s in payload["subscriptions"] if s["name"] == "配置1")
+        assert {n["name"] for n in payload["by_sub"][old_id]["nodes"]} == {"旧机场-日本1"}
 
 
 def test_dashboard_html_landmarks_and_xss():
@@ -101,6 +105,11 @@ def test_dashboard_html_landmarks_and_xss():
     html = render_dashboard(payload)
     assert "id='na-app'" in html
     assert "id='na-data'" in html
+    assert "id='sub'" in html
+    assert "--dc:#ffc14a" in html
+    assert "--bad:#ff6b6b" in html
+    assert ".verdict.fail" in html
+    assert "function activeData" in html
     assert "demo-banner" in html
     assert "function spark" in html
     assert "spark-axis" in html

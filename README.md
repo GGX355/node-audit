@@ -18,6 +18,7 @@ Clash / mihomo **节点质量审计**：双击一个 exe，把订阅里每个节
 3. **双击**。黑窗口不要关。
 4. 菜单选 **1**（或直接 Enter）开始全量审计，大约十几～二十分钟。
 5. 结束后自动打开 `node-audit-report\latest.html`。选 **2** / **4** 只打开浏览器，**窗口还在**，可以接着选 **1**。只有 **Q** 才退出。
+6. 换一套 VPN（在 Clash Verge 里切订阅）再跑一次，会自动变成「配置2」。报告顶栏下拉可在两套之间切换。
 
 | 菜单 | 作用 |
 |---|---|
@@ -29,7 +30,7 @@ Clash / mihomo **节点质量审计**：双击一个 exe，把订阅里每个节
 
 第一次还会在 exe 旁边生成 `node-audit.ini`（默认就能跑）和 `使用说明.html`。
 
-演示界面（假数据，3 个节点）：打开仓库里的 [`examples/sample-dashboard.html`](examples/sample-dashboard.html)。那不是你的订阅。
+演示界面（假数据）：打开仓库里的 [`examples/sample-dashboard.html`](examples/sample-dashboard.html)。那不是你的订阅。侧栏圆点：家宽绿、机房黄、失败红。
 
 ---
 
@@ -99,7 +100,7 @@ node-audit.exe run --yes
 isolated 下浏览器流量不动。不要用 attach 还挂着已登录的网页。
 
 **换了机场趋势乱了**  
-节点名重叠不到 90% 会新开时间轴；换回去还能对上旧的。旧节点在控制台点「历史」。
+节点名重叠不到 90% 会自动新建「配置2」。报告顶栏下拉切换查看。换回去还能对上旧的。ini 里 `config_name` 可改成「家里」「公司」。
 
 ---
 
@@ -111,7 +112,7 @@ isolated 下浏览器流量不动。不要用 attach 还挂着已登录的网页
 | 快筛 | 出口 v6 | api64.ipify.org + ipwho.is |
 | 快筛 | PTR、RDAP 注册档案 | DoH / rdap.org |
 | 快筛 | 延迟、测速、地区是否对得上 | gstatic / Cloudflare |
-| 深检 | 家宽/IDC、原生、风控 | **IPPure JSON**（优先）+ ping0.cc/ip/{地址} + iplark JSON；Scamalytics 网页备选。机房默认跳过网页深检。不加 ipjiance（要验证码） |
+| 深检 | 家宽/IDC、原生、风控 | **IPPure JSON**（优先）+ ping0.cc/ip/{地址} + iplark JSON。机房默认不跑 ping0 网页，但仍打 IPPure 风控分并测 GPT/NF/TT。不加 ipjiance（要验证码） |
 | 可选 | 欺诈分 / 滥用举报 | IPQS、AbuseIPDB（要免费 key，没有也能跑） |
 | 探针 | GPT / Netflix / TikTok | 匿名 GET，不带 Cookie |
 
